@@ -131,7 +131,19 @@ function formatTime(t) {
 
 async function loadHistory() {
   // 没有后端时直接显示空状态，不阻塞
+  // H5 下空 serverUrl 表示走相对路径，允许继续
+  let skip = false
+  // #ifdef H5
+  if (store.serverUrl && /^https?:\/\/(127\.0\.0\.1|localhost)/i.test(store.serverUrl)) {
+    skip = true
+  }
+  // #endif
+  // #ifndef H5
   if (!store.serverUrl || /^https?:\/\/(127\.0\.0\.1|localhost)/i.test(store.serverUrl)) {
+    skip = true
+  }
+  // #endif
+  if (skip) {
     items.value = []
     loading.value = false
     return

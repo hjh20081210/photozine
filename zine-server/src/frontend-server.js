@@ -13,8 +13,7 @@ const staticDir = path.join(__dirname, '..', '..', 'zine-app', 'dist', 'build', 
 const app = express();
 
 // API 反向代理
-// Express app.use('/api', ...) 会自动去掉 /api 前缀，
-// 所以需要用 pathRewrite 把 /api 加回来，确保转发到后端的完整路径
+// app.use('/api', ...) 会去掉 /api 前缀，pathRewrite 把它补回来再转发
 app.use('/api', createProxyMiddleware({
   target: apiTarget,
   changeOrigin: true,
@@ -22,7 +21,7 @@ app.use('/api', createProxyMiddleware({
   pathRewrite: { '^': '/api' },
 }));
 
-// 上传文件静态资源代理（同理，把 /upload 前缀加回来）
+// 上传文件静态资源代理（同理）
 app.use('/upload', createProxyMiddleware({
   target: apiTarget,
   changeOrigin: true,

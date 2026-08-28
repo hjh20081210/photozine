@@ -701,9 +701,19 @@ function onH5PickAlbum() {
 
 async function loadMeta() {
   // 没有后端时直接跳过，不阻塞 UI（默认 127.0.0.1:8080 大概率连不上）
+  // H5 下空 serverUrl 表示走相对路径，允许继续
+  // #ifdef H5
+  if (!store.serverUrl) {
+    // H5 下空 = 相对路径，继续执行
+  } else if (/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(store.serverUrl)) {
+    return
+  }
+  // #endif
+  // #ifndef H5
   if (!store.serverUrl || /^https?:\/\/(127\.0\.0\.1|localhost)/i.test(store.serverUrl)) {
     return
   }
+  // #endif
   try {
     const meta = await request('/api/meta', { timeout: 5000 })
     store.meta = meta

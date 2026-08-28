@@ -10,10 +10,13 @@ import store from '@/store/index.js'
 export function request(path, { method = 'GET', data = null, timeout = 15000, silent = true } = {}) {
   return new Promise((resolve, reject) => {
     const base = (store.serverUrl || '').replace(/\/+$/, '')
+    // #ifndef H5
+    // 非 H5 端必须配置服务器地址
     if (!base) {
       reject(new Error('未配置服务器地址'))
       return
     }
+    // #endif
     uni.request({
       url: base + path,
       method,
