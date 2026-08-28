@@ -1,0 +1,143 @@
+
+<!-- coze-slardar-injected -->
+<script type="text/javascript" crossorigin="anonymous">
+/**
+ * Coze Slardar 监控注入脚本
+ * 用于在 Hybrid 场景下对特定的 iframe 进行性能和白屏监控。
+ */
+(function () {
+  // 0. 域名检查：仅在特定白名单域名下运行
+  var domains = ['www.coze.cn', 'space.coze.cn', 'space-web.coze.site'];
+  var host = window.location.host;
+  var isMatch = false;
+
+  for (var i = 0; i < domains.length; i++) {
+    var d = domains[i];
+    if (
+      host === d ||
+      (d.indexOf('*.') === 0 && host.endsWith(d.substring(2)))
+    ) {
+      isMatch = true;
+      break;
+    }
+  }
+
+  // 额外支持 coze.cn 和 coze.site 的子域名
+  if (!isMatch) {
+    if (
+      host.endsWith('.coze.cn') ||
+      host === 'coze.cn' ||
+      host.endsWith('.coze.site') ||
+      host === 'coze.site'
+    ) {
+      isMatch = true;
+    }
+  }
+
+  if (!isMatch) return;
+
+  // 1. 注入标记：用于检查是否已注入，防止重复注入
+  var INJECTION_MARKER = 'coze-slardar-injected';
+  if (window[INJECTION_MARKER]) return;
+  window[INJECTION_MARKER] = true;
+
+  // 2. Slardar SDK 初始化逻辑
+  (function (w, d, u, b, n, pc, ga, ae, po, s, p, e, t, pp) {
+    pc = 'precollect';
+    ga = 'getAttribute';
+    ae = 'addEventListener';
+    po = 'PerformanceObserver';
+    s = function (m) {
+      p = [].slice.call(arguments);
+      p.push(Date.now(), location.href);
+      (m == pc ? s.p.a : s.q).push(p);
+    };
+    s.q = [];
+    s.p = { a: [] };
+    w[n] = s;
+    e = document.createElement('script');
+    e.src = u + '?bid=' + b + '&globalName=' + n;
+    (d.head || d.documentElement).appendChild(e);
+    if (ae in w) {
+      s.pcErr = function (e) {
+        e = e || w.event;
+        t = e.target || e.srcElement;
+        if (t instanceof Element || t instanceof HTMLElement) {
+          if (t[ga]('integrity')) {
+            w[n](pc, 'sri', t[ga]('href') || t[ga]('src'));
+          } else {
+            w[n](pc, 'st', {
+              tagName: t.tagName,
+              url: t[ga]('href') || t[ga]('src'),
+            });
+          }
+        } else {
+          w[n](pc, 'err', e.error);
+        }
+      };
+      s.pcRej = function (e) {
+        e = e || w.event;
+        w[n](pc, 'reject', e.reason || (e.detail && e.detail.reason));
+      };
+      w[ae]('error', s.pcErr, true);
+      w[ae]('unhandledrejection', s.pcRej, true);
+    }
+    if ('PerformanceLongTaskTiming' in w) {
+      pp = s.pp = { entries: [] };
+      pp.observer = new PerformanceObserver(function (l) {
+        pp.entries = pp.entries.concat(l.getEntries());
+      });
+      pp.observer.observe({ entryTypes: ['longtask'] });
+    }
+  })(
+    window,
+    document,
+    'https://lf3-short.ibytedapm.com/slardar/fe/sdk-web/browser.cn.js',
+    'coze_mobile_product',
+    'MobProdSlardar',
+  );
+
+  window.MobProdSlardar('init', {
+    bid: 'coze_mobile_product',
+    userId: '4228059556218859',
+    deviceId: '274246029578330',
+    release: '3.1.2',
+    plugins: {
+      ajax: {
+        autoWrap: true,
+        collectBodyOnError: true,
+      },
+      fetch: {
+        autoWrap: true,
+        collectBodyOnError: true,
+      },
+      blankScreen: {
+        rootSelector: '#app, #root, body',
+        autoDetect: true,
+        threshold: 2,
+        screenshot: true,
+        mask: false,
+        partialShot: true,
+        initDetTime: 5000,
+        runDetTime: 4000,
+        checkInterval: 3000,
+        maxCheckCount: 5,
+        quality: 0.1,
+      },
+    },
+  });
+  window.MobProdSlardar('start');
+  if ((typeof window.MobProdSlardar === 'function') && window.MobProdSlardar) {
+    try {
+      window.MobProdSlardar('sendEvent', {
+        name: 'SLARDAR_INIT_SUCCESS',
+        categories: { pathname: location.pathname || '', query: location.search || '' } // 分类维度，如状态、场景等
+      });
+    } catch (error) {
+      console.error('Slardar 初始化事件发送失败:', error);
+    }
+  }
+})();
+
+</script>
+{"detail":"无法连接到后端服务"}

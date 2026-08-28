@@ -10,4 +10,4 @@ spring:
 
 upload:
   # 容器/本地上传目录；Railway 可把 Volume 挂到 /app/upload 做持久化
-  path: ${UPLOAD_PATH:./upload/}
+  path: ${UPLOAD_PATH:/tmp/zine-upload/}
