@@ -55,6 +55,33 @@ const store = reactive({
   preview: null,   // 结果页预览数据：{taskId, frontUrl, backUrl, ratio, styleName, sides, mode}
   meta: null,      // /api/meta 缓存：{styles, providers, ratios}
 
+  /* ============ 免费模型定义 ============ */
+  // 所有用户默认可用的免费模型，Seedream 4.5 为默认首选，Flux 也免费
+  FREE_MODELS: [
+    {
+      id: 'cfg_free_seedream_4_5',
+      name: 'Seedream 4.5（免费）',
+      provider: 'openai',
+      apiFormat: 'chat',
+      baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+      customPath: '',
+      apiKey: 'sk-vGh4DCVWctMEzhVoLlYe4uUfPEgOmVgaB8UkbVhPR8auMPB2qKixWmvuQqSFUeyU',
+      model: 'seedream-4.5',
+      imageInput: 'auto',
+    },
+    {
+      id: 'cfg_free_flux',
+      name: 'Flux（免费）',
+      provider: 'openai',
+      apiFormat: 'chat',
+      baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+      customPath: '',
+      apiKey: 'sk-vGh4DCVWctMEzhVoLlYe4uUfPEgOmVgaB8UkbVhPR8auMPB2qKixWmvuQqSFUeyU',
+      model: 'flux',
+      imageInput: 'auto',
+    },
+  ],
+
   /* ============ 加载 & 持久化 ============ */
   load() {
     const su = uni.getStorageSync(KEY_SERVER)
@@ -65,54 +92,64 @@ const store = reactive({
     const first = uni.getStorageSync(KEY_FIRST_OPEN)
     this.firstOpen = first !== '1'
 
+    let list = []
+    let activeId = ''
+    let needSave = false
+
     // ① 优先读多套配置
-    const list = uni.getStorageSync(KEY_MODEL_CONFIGS)
-    const activeId = uni.getStorageSync(KEY_ACTIVE_CONFIG_ID)
-    if (Array.isArray(list) && list.length) {
-      this.modelConfigs = list.slice()
-      // 激活ID必须存在于列表中，否则回落第一项
-      const exists = list.some((c) => c.id === activeId)
-      this.activeConfigId = exists ? activeId : list[0].id
-      return
+    const storedList = uni.getStorageSync(KEY_MODEL_CONFIGS)
+    const storedActiveId = uni.getStorageSync(KEY_ACTIVE_CONFIG_ID)
+    if (Array.isArray(storedList) && storedList.length) {
+      list = storedList.slice()
+      activeId = storedActiveId
+    } else {
+      // ② 旧单套兼容：读取 zine_provider，如果存在自动迁移为一套配置
+      const p = uni.getStorageSync(KEY_PROVIDER)
+      if (p && typeof p === 'object' && p.apiKey && p.apiKey.trim()) {
+        list = [{
+          id: 'cfg_migrated_' + Date.now(),
+          name: '我的配置（迁移）',
+          provider: p.provider || 'openai',
+          baseUrl: p.baseUrl || '',
+          apiKey: p.apiKey,
+          model: p.model || '',
+          imageInput: p.imageInput || 'auto',
+          createdAt: Date.now(),
+        }]
+        activeId = list[0].id
+        needSave = true
+      }
     }
 
-    // ② 旧单套兼容：读取 zine_provider，如果存在自动迁移为一套配置
-    const p = uni.getStorageSync(KEY_PROVIDER)
-    if (p && typeof p === 'object' && p.apiKey && p.apiKey.trim()) {
-      const migrated = {
-        id: 'cfg_migrated_' + Date.now(),
-        name: '我的配置（迁移）',
-        provider: p.provider || 'openai',
-        baseUrl: p.baseUrl || '',
-        apiKey: p.apiKey,
-        model: p.model || '',
-        imageInput: p.imageInput || 'auto',
-        createdAt: Date.now(),
+    // ③ 确保免费模型存在（所有用户都有）
+    this.FREE_MODELS.forEach((freeCfg, idx) => {
+      const exists = list.some((c) => c.id === freeCfg.id)
+      if (!exists) {
+        list.splice(idx, 0, { ...freeCfg, createdAt: Date.now() + idx })
+        needSave = true
       }
-      this.modelConfigs = [migrated]
-      this.activeConfigId = migrated.id
+    })
+
+    // ④ 如果旧的默认 DeepSeek 模型还在且用户没改过，替换为 Seedream 4.5
+    const oldDeepSeekIdx = list.findIndex((c) => c.id === 'cfg_default_deepseek_v4')
+    if (oldDeepSeekIdx >= 0) {
+      // 用 Seedream 4.5 替换旧 DeepSeek（保留位置）
+      list[oldDeepSeekIdx] = { ...this.FREE_MODELS[0], createdAt: list[oldDeepSeekIdx].createdAt }
+      if (activeId === 'cfg_default_deepseek_v4') {
+        activeId = this.FREE_MODELS[0].id
+      }
+      needSave = true
+    }
+
+    this.modelConfigs = list
+    // 激活ID必须存在于列表中，否则回落第一个免费模型
+    const exists = list.some((c) => c.id === activeId)
+    this.activeConfigId = exists ? activeId : (list[0] && list[0].id) || ''
+
+    if (needSave) {
       this.saveModelConfigs()
       this.saveActiveConfigId()
-      return
     }
-
-    // ③ 全新用户：添加默认免费模型（DeepSeek-V4-Flash-Vision）
-    const defaultModel = {
-      id: 'cfg_default_deepseek_v4',
-      name: 'DeepSeek 免费模型',
-      provider: 'openai',
-      apiFormat: 'chat',
-      baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
-      customPath: '',
-      apiKey: 'sk-vGh4DCVWctMEzhVoLlYe4uUfPEgOmVgaB8UkbVhPR8auMPB2qKixWmvuQqSFUeyU',
-      model: 'deepseek-v4-flash-vision-exp',
-      imageInput: 'auto',
-      createdAt: Date.now(),
-    }
-    this.modelConfigs = [defaultModel]
-    this.activeConfigId = defaultModel.id
-    this.saveModelConfigs()
-    this.saveActiveConfigId()
   },
 
   saveServerUrl() {

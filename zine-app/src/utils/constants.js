@@ -70,6 +70,7 @@ export const PROVIDERS = [
       { key: 'gpt-image-1', label: 'gpt-image-1（推荐·图生图）' },
       { key: 'dall-e-3', label: 'dall-e-3（文生图）' },
       { key: 'dall-e-2', label: 'dall-e-2（经典）' },
+      { key: 'flux', label: 'Flux（高质量）' },
     ],
     hint: '支持 gpt-image-1 / dall-e-3，上传照片时走原图编辑 /images/editions',
   },
@@ -90,9 +91,10 @@ export const PROVIDERS = [
     key: 'ark',
     name: '火山方舟/即梦',
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    defaultModel: 'doubao-seedream-3-0-t2i-250415',
+    defaultModel: 'seedream-4.5',
     models: [
-      { key: 'doubao-seedream-3-0-t2i-250415', label: '即梦 Seedream 3.0（推荐）' },
+      { key: 'seedream-4.5', label: 'Seedream 4.5（最新·推荐）' },
+      { key: 'doubao-seedream-3-0-t2i-250415', label: '即梦 Seedream 3.0' },
       { key: 'doubao-seedream-2-0-t2i-250115', label: '即梦 Seedream 2.0' },
       { key: 'doubao-1-5-vision-pro-32k-250115', label: '豆包视觉（图生图编辑）' },
     ],
@@ -119,6 +121,7 @@ export const PROVIDERS = [
     models: [
       { key: 'gpt-image-1', label: 'gpt-image-1' },
       { key: 'dall-e-3', label: 'dall-e-3' },
+      { key: 'flux', label: 'Flux' },
       { key: 'midjourney-proxy', label: 'Midjourney Proxy 兼容' },
       { key: 'stable-diffusion', label: 'Stable Diffusion WebUI 兼容' },
     ],
