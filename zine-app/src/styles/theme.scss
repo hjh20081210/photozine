@@ -1,0 +1,435 @@
+/* ============================================================
+ * 轻文艺明信片 - Zine Paper Memory 设计系统
+ * 与参考图完全一致：米白纸底 / 橙棕复古主色 / 衬线标题 / 纸纹噪点
+ * 参考：Photo to Zine Postcard App / 创作页 双图预览 / 我的明信片网格
+ *  ============================================================ */
+
+page {
+  /* --- 色彩：橙棕复古 + 米白纸 --- */
+  --paper-bg: #F4EFE8;        /* 米白纸底 - 与参考图完全一致的暖色纸色 */
+  --paper-bg-soft: #EFE8DD;   /* 凹下底（卡片嵌入/段落） */
+  --paper-surface: #FFFFFF;   /* 纯白卡片 */
+
+  --ink: #2C241E;             /* 深棕黑文字 - 不是纯黑 */
+  --ink-2: #6B5B4E;           /* 次级棕灰 */
+  --ink-3: #9A8877;           /* 次级更淡 */
+  --ink-4: #C8B9A8;           /* 占位/分割 */
+
+  /* 主色：橙砖色 Terracotta - 参考图「生成明信片」按钮色 */
+  --primary: #D86A46;
+  --primary-deep: #C15837;
+  --primary-soft: #F5DED1;
+  --primary-line: rgba(216, 106, 70, 0.28);
+
+  --accent-green: #8FA56F;
+  --accent-green-soft: #ECF1E1;
+  --accent-blue: #6F90A5;
+  --accent-blue-soft: #E1EAF0;
+
+  --ok: #8FA56F;
+  --ok-soft: #ECF1E1;
+  --warn: #C89956;
+  --warn-soft: #F4E4C7;
+  --danger: #C26155;
+  --danger-soft: #F1DBD5;
+
+  --line: rgba(44, 36, 30, 0.08);
+  --line-strong: rgba(44, 36, 30, 0.15);
+
+  /* --- 阴影 --- */
+  --shadow-card: 0 8rpx 22rpx rgba(44, 36, 30, 0.08);
+  --shadow-card-hover: 0 14rpx 34rpx rgba(44, 36, 30, 0.12);
+  --shadow-btn: 0 10rpx 22rpx rgba(216, 106, 70, 0.32);
+  --shadow-soft: 0 5rpx 14rpx rgba(44, 36, 30, 0.06);
+  --shadow-inset: inset 0 2rpx 6rpx rgba(44, 36, 30, 0.07);
+
+  /* --- 圆角 --- */
+  --radius: 32rpx;
+  --radius-lg: 40rpx;
+  --radius-sm: 24rpx;
+  --radius-xs: 16rpx;
+
+  /* --- 字体：衬线标题（文艺感）+ 无衬线正文 --- */
+  --font-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', Georgia, 'Times New Roman', serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Helvetica Neue', sans-serif;
+  font-family: var(--font-sans);
+  font-size: 28rpx;
+
+  background-color: var(--paper-bg);
+  color: var(--ink);
+}
+
+/* ---------------- 纸纹底（纯色，干净无色块） ---------------- */
+.paper-bg {
+  position: relative;
+  background-color: var(--paper-bg);
+}
+
+/* 衬线大标题 */
+.serif-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.5rpx;
+}
+
+/* ---------------- 卡片 ---------------- */
+.neo-card {
+  position: relative;
+  border-radius: var(--radius);
+  background: var(--paper-surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.neo-card-inset {
+  position: relative;
+  border-radius: var(--radius-sm);
+  background: var(--paper-bg-soft);
+  box-shadow: var(--shadow-inset);
+}
+
+/* ---------------- 按钮：复古砖橙圆角 ---------------- */
+.neo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  font-weight: 600;
+  background: var(--paper-surface);
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  font-family: var(--font-sans);
+}
+.neo-btn:active {
+  transform: scale(0.97);
+  box-shadow: var(--shadow-inset);
+}
+/* 主按钮：与参考图「生成明信片 / 保存到相册」完全一致的砖橙 */
+.neo-btn-primary {
+  color: #FFFFFF;
+  background: var(--primary);
+  box-shadow: var(--shadow-btn);
+}
+.neo-btn-primary:active {
+  background: var(--primary-deep);
+  box-shadow: 0 5rpx 14rpx rgba(193, 88, 55, 0.3);
+}
+.neo-btn-soft {
+  color: var(--primary-deep);
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+.neo-btn-ghost {
+  color: var(--ink-2);
+  background: var(--paper-surface);
+  border: 1rpx solid var(--line-strong);
+  box-shadow: none;
+}
+.neo-btn-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ---------------- 分段控件（正面预览/背面预览） ---------------- */
+.seg {
+  display: flex;
+  padding: 8rpx;
+  border-radius: 999rpx;
+  background: var(--paper-bg-soft);
+  position: relative;
+  border: 1rpx solid var(--line);
+}
+.seg-thumb {
+  position: absolute;
+  top: 8rpx;
+  bottom: 8rpx;
+  border-radius: 999rpx;
+  background: var(--paper-surface);
+  box-shadow: var(--shadow-soft);
+  transition: left 0.28s cubic-bezier(0.22, 1, 0.36, 1), width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.seg-item {
+  flex: 1;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 20rpx 0;
+  font-size: 26rpx;
+  color: var(--ink-3);
+  transition: color 0.2s;
+  font-weight: 500;
+}
+.seg-item.on {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ---------------- 标签 / 段落 ---------------- */
+.eyebrow {
+  font-size: 22rpx;
+  color: var(--primary-deep);
+  font-weight: 700;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  background: var(--primary-soft);
+  display: inline-block;
+  letter-spacing: 1rpx;
+}
+.section-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--ink);
+}
+.section-sub {
+  font-size: 26rpx;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.caption {
+  font-size: 22rpx;
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+}
+
+/* ---------------- 输入框 ---------------- */
+.neo-input-wrap {
+  border-radius: var(--radius-sm);
+  background: var(--paper-bg-soft);
+  padding: 0 28rpx;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+  border: 1rpx solid transparent;
+}
+.neo-input-wrap:focus-within {
+  background: var(--paper-surface);
+  border-color: var(--primary-line);
+  box-shadow: 0 0 0 3rpx var(--primary-line), var(--shadow-soft);
+}
+.neo-input {
+  flex: 1;
+  height: 92rpx;
+  font-size: 28rpx;
+  color: var(--ink);
+  background: transparent;
+  font-weight: 500;
+}
+
+/* ---------------- 图标圆形背景 ---------------- */
+.icon-circle {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-soft);
+  background: var(--paper-bg-soft);
+  color: var(--ink-2);
+}
+.icon-circle.primary {
+  background: var(--primary-soft);
+  color: var(--primary-deep);
+}
+.icon-circle.green {
+  background: var(--accent-green-soft);
+  color: var(--accent-green);
+}
+.icon-circle.blue {
+  background: var(--accent-blue-soft);
+  color: var(--accent-blue);
+}
+.icon-circle.orange {
+  background: var(--primary-soft);
+  color: var(--primary-deep);
+}
+
+/* ---------------- 通用文本工具类 ---------------- */
+.txt-2 { color: var(--ink-2); }
+.txt-3 { color: var(--ink-3); }
+.txt-primary { color: var(--primary-deep); }
+.bold { font-weight: 700; }
+.extra-bold { font-weight: 800; }
+.serif { font-family: var(--font-serif); }
+
+/* ---------------- 我的明信片网格 - 参考图一致卡片样式 ---------------- */
+.zine-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24rpx;
+}
+.zine-card {
+  position: relative;
+  border-radius: 28rpx;
+  background: var(--paper-surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.zine-card:active {
+  transform: scale(0.97);
+  box-shadow: var(--shadow-soft);
+}
+.zine-card .cover {
+  width: 100%;
+  /* 2:3 明信片比例 */
+  aspect-ratio: 2 / 3;
+  background: var(--paper-bg-soft);
+  overflow: hidden;
+}
+.zine-card .cover image { width: 100%; height: 100%; }
+.zine-card .foot {
+  padding: 16rpx 18rpx 18rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.zine-card .title {
+  font-size: 24rpx;
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zine-card .meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4rpx;
+}
+.zine-card .date { font-size: 18rpx; color: var(--ink-3); }
+.zine-card .size { font-size: 18rpx; color: var(--ink-3); }
+.zine-card .badge {
+  position: absolute;
+  top: 18rpx;
+  left: 18rpx;
+  background: var(--paper-surface);
+  color: var(--ink-2);
+  border-radius: 999rpx;
+  padding: 4rpx 12rpx;
+  font-size: 18rpx;
+  font-weight: 600;
+  box-shadow: var(--shadow-soft);
+}
+
+/* ---------------- 纸纹色板 4色 - 与参考图一致：十字格纹 / 斜橙线 / 纯黑 / 橙砖 ---------------- */
+.paper-swatches {
+  display: flex;
+  gap: 22rpx;
+  align-items: flex-start;
+}
+.swatch-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10rpx;
+  position: relative;
+}
+.swatch-box {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  position: relative;
+  transition: all 0.2s;
+  border: 3rpx solid transparent;
+}
+.swatch-item.on .swatch-box {
+  border-color: var(--primary);
+  box-shadow: 0 6rpx 16rpx rgba(216, 106, 70, 0.28);
+}
+.swatch-check {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  background: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3rpx 8rpx rgba(216, 106, 70, 0.4);
+}
+/* 4种纸纹样式 */
+.sw-paper-1 {
+  background: #FFFFFF;
+  background-image:
+    linear-gradient(rgba(44, 36, 30, 0.12) 1rpx, transparent 1rpx),
+    linear-gradient(90deg, rgba(44, 36, 30, 0.12) 1rpx, transparent 1rpx);
+  background-size: 16rpx 16rpx;
+}
+.sw-paper-2 {
+  background: #F8E9DA;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(216, 106, 70, 0.35) 0rpx,
+    rgba(216, 106, 70, 0.35) 1rpx,
+    transparent 1rpx,
+    transparent 12rpx
+  );
+}
+.sw-paper-3 { background: #1E1A17; }
+.sw-paper-4 { background: var(--primary); }
+
+.swatch-label {
+  font-size: 20rpx;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.swatch-item.on .swatch-label { color: var(--primary-deep); font-weight: 700; }
+
+/* ---------------- 作画风格 3chip - 参考图底部：原图保留 / 手绘二创 / 三色块采样 ---------------- */
+.style-chips {
+  display: flex;
+  gap: 18rpx;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.style-chip {
+  padding: 18rpx 34rpx;
+  border-radius: 999rpx;
+  background: var(--paper-surface);
+  border: 1.5rpx solid var(--line);
+  transition: all 0.2s;
+}
+.style-chip:active { transform: scale(0.96); }
+.style-chip.on {
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-btn);
+}
+.style-chip-txt {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--ink-2);
+  letter-spacing: 0.5rpx;
+}
+.style-chip.on .style-chip-txt { color: #fff; }
+
+/* ---------------- 作品详情页 4格 2x2 预览 ---------------- */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20rpx;
+}
+.detail-grid .zine-card .cover { aspect-ratio: 2 / 3; }
+
+/* ---------------- 分享/操作 圆形图标（橙棕色） ---------------- */
+.ico-primary {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: var(--shadow-btn);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.ico-primary:active { background: var(--primary-deep); transform: scale(0.95); }

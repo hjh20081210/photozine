@@ -1,0 +1,247 @@
+import { reactive } from 'vue'
+
+const KEY_SERVER = 'zine_serverUrl'
+const KEY_PROVIDER = 'zine_provider'              // 旧单套（向后兼容读取用）
+const KEY_MODEL_CONFIGS = 'zine_model_configs'    // 新：多套配置数组
+const KEY_ACTIVE_CONFIG_ID = 'zine_active_config' // 新：当前选中的配置ID
+const KEY_PRIVACY_AGREED = 'zine_privacy_agreed'  // 隐私协议是否同意
+const KEY_FIRST_OPEN = 'zine_first_open'          // 是否首次打开
+
+const PROVIDER_NAME_MAP = {
+  openai: 'OpenAI',
+  deepseek: 'DeepSeek',
+  dashscope: '通义万相',
+  ark: '火山方舟/即梦',
+  gemini: 'Gemini',
+  custom: '自定义兼容',
+}
+
+/**
+ * 单套配置的结构：
+ * {
+ *   id: 'cfg_xxx',        // 唯一ID，本地存储持久化
+ *   name: '我的通义万相',  // 用户可识别的名字，显示在创作页选择器里
+ *   provider: 'openai' | 'dashscope' | 'ark' | 'gemini' | 'custom',
+ *   apiFormat: 'chat' | 'responses' | 'anthropic',  // 接口格式
+ *   baseUrl: 'https://...',
+ *   customPath: '/custom/path',  // 自定义请求路径（可选）
+ *   apiKey: 'sk-...',
+ *   model: 'gpt-image-1',
+ *   imageInput: 'auto' | 'edit' | 'ref' | 'none',
+ *   createdAt: 1763xxx,    // 创建时间戳
+ * }
+ */
+
+/**
+ * 全局轻量状态（Vue3 reactive + uni 本地存储持久化）。
+ * 用户的自有 API Key 只保存在本机，不提交给第三方。
+ * 支持多套 API+模型配置（用户可接入多个不同服务商/模型），创作前可直接切换。
+ */
+const store = reactive({
+  serverUrl: 'http://127.0.0.1:8080',
+
+  /** 多套配置（创作页模型选择器遍历这个数组） */
+  modelConfigs: [],
+
+  /** 当前创作时选中的配置 ID（对应 modelConfigs[i].id） */
+  activeConfigId: '',
+
+  /** 隐私协议是否已同意 */
+  privacyAgreed: false,
+
+  /** 是否首次打开APP（决定是否显示欢迎弹窗） */
+  firstOpen: true,
+
+  preview: null,   // 结果页预览数据：{taskId, frontUrl, backUrl, ratio, styleName, sides, mode}
+  meta: null,      // /api/meta 缓存：{styles, providers, ratios}
+
+  /* ============ 加载 & 持久化 ============ */
+  load() {
+    const su = uni.getStorageSync(KEY_SERVER)
+    if (su) this.serverUrl = su
+
+    const agreed = uni.getStorageSync(KEY_PRIVACY_AGREED)
+    this.privacyAgreed = !!agreed
+    const first = uni.getStorageSync(KEY_FIRST_OPEN)
+    this.firstOpen = first !== '1'
+
+    // ① 优先读多套配置
+    const list = uni.getStorageSync(KEY_MODEL_CONFIGS)
+    const activeId = uni.getStorageSync(KEY_ACTIVE_CONFIG_ID)
+    if (Array.isArray(list) && list.length) {
+      this.modelConfigs = list.slice()
+      // 激活ID必须存在于列表中，否则回落第一项
+      const exists = list.some((c) => c.id === activeId)
+      this.activeConfigId = exists ? activeId : list[0].id
+      return
+    }
+
+    // ② 旧单套兼容：读取 zine_provider，如果存在自动迁移为一套配置
+    const p = uni.getStorageSync(KEY_PROVIDER)
+    if (p && typeof p === 'object' && p.apiKey && p.apiKey.trim()) {
+      const migrated = {
+        id: 'cfg_migrated_' + Date.now(),
+        name: '我的配置（迁移）',
+        provider: p.provider || 'openai',
+        baseUrl: p.baseUrl || '',
+        apiKey: p.apiKey,
+        model: p.model || '',
+        imageInput: p.imageInput || 'auto',
+        createdAt: Date.now(),
+      }
+      this.modelConfigs = [migrated]
+      this.activeConfigId = migrated.id
+      this.saveModelConfigs()
+      this.saveActiveConfigId()
+      return
+    }
+
+    // ③ 全新用户：添加默认免费模型（DeepSeek-V4-Flash-Vision）
+    const defaultModel = {
+      id: 'cfg_default_deepseek_v4',
+      name: 'DeepSeek 免费模型',
+      provider: 'openai',
+      apiFormat: 'chat',
+      baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+      customPath: '',
+      apiKey: 'sk-vGh4DCVWctMEzhVoLlYe4uUfPEgOmVgaB8UkbVhPR8auMPB2qKixWmvuQqSFUeyU',
+      model: 'deepseek-v4-flash-vision-exp',
+      imageInput: 'auto',
+      createdAt: Date.now(),
+    }
+    this.modelConfigs = [defaultModel]
+    this.activeConfigId = defaultModel.id
+    this.saveModelConfigs()
+    this.saveActiveConfigId()
+  },
+
+  saveServerUrl() {
+    uni.setStorageSync(KEY_SERVER, this.serverUrl)
+  },
+
+  saveModelConfigs() {
+    uni.setStorageSync(KEY_MODEL_CONFIGS, this.modelConfigs.slice())
+  },
+
+  saveActiveConfigId() {
+    uni.setStorageSync(KEY_ACTIVE_CONFIG_ID, this.activeConfigId)
+  },
+
+  /* ============ 多配置操作 ============ */
+  /** 新增或更新一套配置（有 id 就更新，没有就新增） */
+  upsertConfig(cfg) {
+    if (!cfg || !cfg.apiKey || !String(cfg.apiKey).trim()) {
+      throw new Error('API Key 不能为空')
+    }
+    if (!cfg || !cfg.model || !String(cfg.model).trim()) {
+      throw new Error('模型不能为空')
+    }
+    const clean = {
+      id: cfg.id || ('cfg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+      name: String(cfg.name || '').trim() || (PROVIDER_NAME_MAP[cfg.provider] + ' ' + (cfg.model || '').slice(0, 10)),
+      provider: cfg.provider || 'openai',
+      apiFormat: cfg.apiFormat || 'chat',
+      baseUrl: String(cfg.baseUrl || '').trim(),
+      customPath: String(cfg.customPath || '').trim(),
+      apiKey: String(cfg.apiKey).trim(),
+      model: String(cfg.model).trim(),
+      imageInput: cfg.imageInput || 'auto',
+      createdAt: cfg.createdAt || Date.now(),
+    }
+    const idx = this.modelConfigs.findIndex((c) => c.id === clean.id)
+    if (idx >= 0) {
+      this.modelConfigs.splice(idx, 1, clean)
+    } else {
+      this.modelConfigs.push(clean)
+    }
+    // 第一套 / 当前没激活的 → 自动激活它
+    if (!this.activeConfigId || this.modelConfigs.length === 1) {
+      this.activeConfigId = clean.id
+      this.saveActiveConfigId()
+    }
+    this.saveModelConfigs()
+    return clean.id
+  },
+
+  /** 删除一套配置 */
+  deleteConfig(id) {
+    const idx = this.modelConfigs.findIndex((c) => c.id === id)
+    if (idx < 0) return
+    this.modelConfigs.splice(idx, 1)
+    this.saveModelConfigs()
+    if (this.activeConfigId === id) {
+      this.activeConfigId = this.modelConfigs.length ? this.modelConfigs[0].id : ''
+      this.saveActiveConfigId()
+    }
+  },
+
+  /** 设为当前（创作前选择） */
+  setActive(id) {
+    const ok = this.modelConfigs.some((c) => c.id === id)
+    if (!ok) return
+    this.activeConfigId = id
+    this.saveActiveConfigId()
+  },
+
+  /** 拿到当前配置对象 */
+  getActiveConfig() {
+    if (!this.activeConfigId) return null
+    return this.modelConfigs.find((c) => c.id === this.activeConfigId) || null
+  },
+
+  /* ============ 提供给老代码的兼容字段：当前激活的 provider ============ */
+  get provider() {
+    const cfg = this.getActiveConfig()
+    if (!cfg) return { provider: 'openai', baseUrl: '', apiKey: '', model: '', imageInput: 'auto' }
+    return cfg
+  },
+  /** 兼容：老代码写 store.provider.xxx = v 的形式会触发不到 setter，
+   *  但新的创作页全部用 getActiveConfig() / upsertConfig，
+   *  这里提供 setter 以防残留老代码造成异常崩溃。 */
+  set provider(_v) {},
+
+  providerLabel() {
+    const cfg = this.getActiveConfig()
+    if (!cfg) return '尚未接入模型'
+    return PROVIDER_NAME_MAP[cfg.provider] || cfg.provider
+  },
+
+  providerConfigured() {
+    const cfg = this.getActiveConfig()
+    return !!(cfg && cfg.apiKey && cfg.apiKey.trim())
+  },
+
+  /** 创作页选择器显示的简短模型名 */
+  activeModelLabel() {
+    const cfg = this.getActiveConfig()
+    if (!cfg) return '尚未接入模型'
+    return `${cfg.name} · ${PROVIDER_NAME_MAP[cfg.provider] || cfg.provider} · ${cfg.model || '未设模型'}`
+  },
+
+  /** 拼接服务器资源完整地址 */
+  fullUrl(path) {
+    if (!path) return ''
+    if (/^https?:\/\//i.test(path)) return path
+    return this.serverUrl.replace(/\/+$/, '') + path
+  },
+
+  /* ============ 隐私协议 ============ */
+  agreePrivacy() {
+    this.privacyAgreed = true
+    this.firstOpen = false
+    uni.setStorageSync(KEY_PRIVACY_AGREED, '1')
+    uni.setStorageSync(KEY_FIRST_OPEN, '1')
+  },
+
+  declinePrivacy() {
+    uni.setStorageSync(KEY_PRIVACY_AGREED, '0')
+    this.privacyAgreed = false
+  },
+
+  markFirstOpenSeen() {
+    this.firstOpen = false
+    uni.setStorageSync(KEY_FIRST_OPEN, '1')
+  },
+})
+
+export default store

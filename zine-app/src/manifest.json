@@ -1,0 +1,85 @@
+{
+    "name" : "折纸邮笺",
+    "appid" : "",
+    "description" : "把照片做成可寄出的纸感明信片 / 极简海报（接入你自己的大模型生图服务）",
+    "versionName" : "1.0.0",
+    "versionCode" : "100",
+    "transformPx" : false,
+    /* 5+App特有相关 */
+    "app-plus" : {
+        "usingComponents" : true,
+        "nvueStyleCompiler" : "uni-app",
+        "compilerVersion" : 3,
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
+        },
+        /* 模块配置 */
+        "modules" : {},
+        /* 应用发布信息 */
+        "distribute" : {
+            /* android打包配置 */
+            "android" : {
+                "permissions" : [
+                    "<uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
+                    "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
+                    "<uses-feature android:name=\"android.hardware.camera\"/>"
+                ]
+            },
+            /* ios打包配置 */
+            "ios" : {
+                "privacyDescription" : {
+                    "NSCameraUsageDescription" : "用于拍摄照片生成明信片",
+                    "NSPhotoLibraryUsageDescription" : "用于从相册选择照片生成明信片",
+                    "NSPhotoLibraryAddUsageDescription" : "用于把生成的作品保存到相册"
+                }
+            },
+            /* SDK配置 */
+            "sdkConfigs" : {}
+        }
+    },
+    /* HarmonyOS App（需 HBuilderX 4.x + DevEco Studio） */
+    "app-harmony" : {
+        "usingComponents" : true,
+        "distribute" : {
+            "harmony" : {
+                "permissions" : [
+                    "ohos.permission.CAMERA",
+                    "ohos.permission.READ_IMAGEVIDEO",
+                    "ohos.permission.WRITE_IMAGEVIDEO",
+                    "ohos.permission.INTERNET"
+                ],
+                "targetSdkVersion" : "5.0.0(12)"
+            }
+        }
+    },
+    /* 小程序特有相关 */
+    "mp-weixin" : {
+        "appid" : "",
+        "setting" : {
+            "urlCheck" : false
+        },
+        "usingComponents" : true
+    },
+    "mp-alipay" : {
+        "usingComponents" : true
+    },
+    "mp-baidu" : {
+        "usingComponents" : true
+    },
+    "mp-toutiao" : {
+        "usingComponents" : true
+    },
+    "uniStatistics": {
+        "enable": false
+    },
+    "vueVersion" : "3"
+}
