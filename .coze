@@ -2,9 +2,9 @@
 requires = ["nodejs-24"]
 
 [dev]
-build = ["sh", "-c", "cd zine-app && pnpm install && pnpm run build:h5 && cd ../zine-server && pnpm install"]
-run = ["sh", "-c", "cd zine-server && node src/server.js &  cd zine-app/dist/build/h5 && npx serve -l ${DEPLOY_RUN_PORT} -s ."]
+build = ["sh", "-c", "cd zine-server && pnpm install && cd ../zine-app && pnpm install && pnpm run build:h5"]
+run = ["sh", "-c", "cd zine-server && PORT=8080 node src/server.js & node src/frontend-server.js"]
 
 [deploy]
-build = ["sh", "-c", "cd zine-app && pnpm install && pnpm run build:h5 && cd ../zine-server && pnpm install"]
-run = ["sh", "-c", "cd zine-server && PORT=8080 node src/server.js & cd zine-app/dist/build/h5 && npx serve -l ${DEPLOY_RUN_PORT} -s ."]
+build = ["sh", "-c", "cd zine-server && pnpm install && cd ../zine-app && pnpm install && pnpm run build:h5"]
+run = ["sh", "-c", "cd zine-server && PORT=8080 node src/server.js & DEV_PORT=${DEPLOY_RUN_PORT} node src/frontend-server.js"]

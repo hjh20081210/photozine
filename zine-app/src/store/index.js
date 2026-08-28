@@ -38,7 +38,9 @@ const PROVIDER_NAME_MAP = {
  * 支持多套 API+模型配置（用户可接入多个不同服务商/模型），创作前可直接切换。
  */
 const store = reactive({
-  serverUrl: 'http://127.0.0.1:8080',
+  // 默认为空（走相对路径），由前端服务的反向代理转发到后端
+  // 这样无论在 localhost 还是公网域名下都能正常访问 API
+  serverUrl: '',
 
   /** 多套配置（创作页模型选择器遍历这个数组） */
   modelConfigs: [],
