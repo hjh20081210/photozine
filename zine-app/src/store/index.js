@@ -56,28 +56,28 @@ const store = reactive({
   meta: null,      // /api/meta 缓存：{styles, providers, ratios}
 
   /* ============ 免费模型定义 ============ */
-  // 所有用户默认可用的免费模型，Seedream 4.5 为默认首选，Flux 也免费
+  // 所有用户默认可用的免费模型，通过本地生成代理调用，无需配置 API Key
   FREE_MODELS: [
     {
       id: 'cfg_free_seedream_4_5',
       name: 'Seedream 4.5（免费）',
-      provider: 'openai',
-      apiFormat: 'chat',
-      baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+      provider: 'local',
+      apiFormat: 'image',
+      baseUrl: '',  // 留空表示使用 serverUrl 本地代理
       customPath: '',
-      apiKey: 'sk-vGh4DCVWctMEzhVoLlYe4uUfPEgOmVgaB8UkbVhPR8auMPB2qKixWmvuQqSFUeyU',
+      apiKey: 'free',
       model: 'seedream-4.5',
       imageInput: 'auto',
     },
     {
       id: 'cfg_free_flux',
       name: 'Flux（免费）',
-      provider: 'openai',
-      apiFormat: 'chat',
-      baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+      provider: 'local',
+      apiFormat: 'image',
+      baseUrl: '',
       customPath: '',
-      apiKey: 'sk-vGh4DCVWctMEzhVoLlYe4uUfPEgOmVgaB8UkbVhPR8auMPB2qKixWmvuQqSFUeyU',
-      model: 'flux',
+      apiKey: 'free',
+      model: 'seedream-4.5',  // 免费版统一走 Seedream 模型
       imageInput: 'auto',
     },
   ],
