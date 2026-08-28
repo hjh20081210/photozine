@@ -12,6 +12,19 @@ const app = express();
 // 使用 DEV_PORT 环境变量（沙箱主仓固定 5000），兼容旧的 PORT
 const PORT = process.env.DEV_PORT || process.env.PORT || 5000;
 
+// 访问日志
+app.use((req, res, next) => {
+  const start = Date.now()
+  console.log(`[REQ] ${req.method} ${req.url}`)
+  const origEnd = res.end
+  res.end = function(chunk, encoding) {
+    const ms = Date.now() - start
+    console.log(`[RES] ${req.method} ${req.url} -> ${res.statusCode} (${ms}ms)`)
+    origEnd.call(this, chunk, encoding)
+  }
+  next()
+})
+
 // CORS
 app.use(cors({
   origin: true,
