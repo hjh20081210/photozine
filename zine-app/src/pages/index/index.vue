@@ -1,15 +1,5 @@
 <template>
   <view class="page paper-bg">
-    <!-- H5兜底：常驻DOM的原生input（防止动态创建被iOS拦截） -->
-    <!-- #ifdef H5 -->
-    <input
-      id="zine-file-input"
-      type="file"
-      accept="image/*"
-      style="display:none"
-      @change="onH5FileChange"
-    />
-    <!-- #endif -->
 
     <!-- 顶部栏：与参考图完全一致 - 左上「Zine明信片创作」小衬线，大字「创作页」，右上搜索 -->
     <view class="nav-bar" :style="{ paddingTop: statusBarPad }">
@@ -420,16 +410,26 @@
         <text class="sheet-title serif">选择照片来源</text>
         <view class="sheet-btns">
           <!-- #ifdef H5 -->
-          <!-- H5：用 label 触发原生 input，规避iOS安全拦截 -->
-          <label for="zine-file-input" class="sheet-btn">
+          <!-- H5：JS 创建原生 input 并触发 click，避免 label/input 关联失效 -->
+          <view class="sheet-btn" @click="onH5PickCamera">
             <view class="sheet-ico">
               <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="#C15837" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 8h3l2-2.5h6L17 8h3a1.5 1.5 0 0 1 1.5 1.5V18a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18V9.5A1.5 1.5 0 0 1 4 8z" />
                 <circle cx="12" cy="13.5" r="3.6" />
               </svg>
             </view>
-            <text class="sheet-btn-txt">拍照/相册</text>
-          </label>
+            <text class="sheet-btn-txt">拍照</text>
+          </view>
+          <view class="sheet-btn" @click="onH5PickAlbum">
+            <view class="sheet-ico">
+              <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="#C15837" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <path d="M21 15l-5-5L5 21"/>
+              </svg>
+            </view>
+            <text class="sheet-btn-txt">相册</text>
+          </view>
           <!-- #endif -->
           <!-- #ifndef H5 -->
           <!-- App/小程序：走 uni.chooseImage 原生API -->
@@ -618,7 +618,86 @@ function formatDate() {
 
 onMounted(() => {
   loadMeta()
+  // #ifdef H5
+  // H5 端：动态创建原生 input[type=file]，用于拍照/相册选择
+  // UniApp 的 <input> 组件是自定义组件，不支持 type=file，必须用原生 DOM
+  initH5FileInputs()
+  // #endif
 })
+
+// H5 专用：创建两个原生 file input（拍照/相册分开，避免 iOS 兼容问题）
+let h5CameraInput = null
+let h5AlbumInput = null
+function initH5FileInputs() {
+  // #ifdef H5
+  const createInput = (capture) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    if (capture) input.setAttribute('capture', 'environment')
+    input.style.display = 'none'
+    input.addEventListener('change', (e) => {
+      const file = e.target.files?.[0]
+      // 重置 input，支持重复选同一张图
+      input.value = ''
+      if (!file) return
+      showPickerSheet.value = false
+      handleH5SelectedFile(file)
+    })
+    document.body.appendChild(input)
+    return input
+  }
+  h5CameraInput = createInput(true)  // 拍照
+  h5AlbumInput = createInput(false)  // 相册
+  // #endif
+}
+
+// H5 选图后处理：读取为本地路径 → 打开裁剪
+function handleH5SelectedFile(file) {
+  // #ifdef H5
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const dataUrl = e.target?.result
+    if (!dataUrl) {
+      uni.showToast({ title: '读取图片失败', icon: 'none' })
+      return
+    }
+    tempImagePath.value = dataUrl
+    showCropper.value = true
+  }
+  reader.onerror = () => {
+    uni.showToast({ title: '读取图片失败', icon: 'none' })
+  }
+  reader.readAsDataURL(file)
+  // #endif
+}
+
+// H5：触发拍照
+function onH5PickCamera() {
+  // #ifdef H5
+  if (showPrivacy.value) {
+    uni.showToast({ title: '请先同意隐私政策', icon: 'none' })
+    return
+  }
+  if (h5CameraInput) {
+    h5CameraInput.click()
+  }
+  // #endif
+}
+
+// H5：触发相册
+function onH5PickAlbum() {
+  // #ifdef H5
+  if (showPrivacy.value) {
+    uni.showToast({ title: '请先同意隐私政策', icon: 'none' })
+    return
+  }
+  if (h5AlbumInput) {
+    h5AlbumInput.click()
+  }
+  // #endif
+}
 
 async function loadMeta() {
   // 没有后端时直接跳过，不阻塞 UI（默认 127.0.0.1:8080 大概率连不上）
@@ -654,25 +733,7 @@ function onPrivacyDecline() {
   }, 600)
 }
 
-// ------- 图片选择（H5用label + input兜底，App/小程序用uni.chooseImage） -------
-
-// H5 兜底：输入框变化时处理文件
-function onH5FileChange(e) {
-  const file = e.target?.files?.[0]
-  if (!file) {
-    e.target.value = ''
-    return
-  }
-  showPickerSheet.value = false
-  // 直接读取文件预览
-  fileToResult(file).then(img => {
-    photo.value = img
-  }).catch(() => {
-    uni.showToast({ title: '读取图片失败', icon: 'none' })
-  }).finally(() => {
-    e.target.value = '' // 重置input，支持重复选同一张图
-  })
-}
+// ------- 图片选择 -------
 
 function onPickImage() {
   if (showPrivacy.value) {
