@@ -931,8 +931,53 @@ async function onGenerate() {
         imageInput: activeCfg.imageInput,
       },
     }
-    const resp = await request('/api/generation', { method: 'POST', data, timeout: 60000 })
-    await poll(resp.taskId)
+    genStep.value = 1 // 正面生成中
+    const resp = await request('/api/generation/', { method: 'POST', data, timeout: 120000 })
+    genStep.value = 2 // 正面完成
+
+    // 处理结果（兼容两种返回格式：直接返回 result 或包裹在 data 里）
+    const result = resp.result || resp.data?.result
+    if (!result || !result.frontUrl) {
+      throw new Error((resp.msg || resp.message) || '生成失败，请重试')
+    }
+
+    frontResult.value = result.frontUrl
+    if (result.backUrl) backResult.value = result.backUrl
+    currentPreviewSide.value = 'front'
+
+    // 保存到历史记录
+    const historyItem = {
+      id: `history_${Date.now()}`,
+      type: mode.value,
+      style: style.value,
+      photo: photo.value,
+      title: title.value,
+      location: location.value,
+      date: date.value,
+      frontMessage: frontMessage.value,
+      backMessage: backMessage.value,
+      ratio: ratio.value,
+      frontUrl: result.frontUrl,
+      backUrl: result.backUrl || null,
+      createdAt: Date.now(),
+      provider: activeCfg.value?.name || '',
+    }
+    store.addHistory(historyItem)
+
+    // 跳转到结果页
+    genStep.value = 3
+    store.preview = {
+      frontUrl: result.frontUrl,
+      backUrl: result.backUrl || null,
+      ratio: ratio.value,
+      styleName: styleLabel.value,
+      sides: sides.value,
+      mode: mode.value,
+      title: title.value,
+      location: location.value,
+      date: date.value,
+    }
+    setTimeout(() => uni.navigateTo({ url: '/pages/result/result' }), 500)
   } catch (e) {
     genStep.value = 0
     uni.showToast({ title: e.message, icon: 'none' })
@@ -940,38 +985,6 @@ async function onGenerate() {
     generating.value = false
   }
 }
-
-async function poll(taskId) {
-  const deadline = Date.now() + 180000
-  while (Date.now() < deadline) {
-    await sleep(2200)
-    const t = await request('/api/generation/' + taskId, { timeout: 30000 })
-    if (t.status === 'SUCCEEDED') {
-      genStep.value = 3
-      store.preview = {
-        taskId,
-        frontUrl: t.result.frontUrl,
-        backUrl: t.result.backUrl,
-        frontMime: t.result.frontMime,
-        backMime: t.result.backMime,
-        ratio: ratio.value,
-        styleName: styleLabel.value,
-        sides: sides.value,
-        mode: mode.value,
-        title: title.value,
-        location: location.value,
-        date: date.value,
-      }
-      setTimeout(() => uni.navigateTo({ url: '/pages/result/result' }), 300)
-      return
-    }
-    if (t.status === 'FAILED') { genStep.value = 0; throw new Error(t.message || '生成失败，请重试') }
-    genStep.value = t.message && t.message.indexOf('正面') >= 0 ? 1 : t.message && t.message.indexOf('背面') >= 0 ? 2 : 0
-    genStatus.value = t.message || '生成中…'
-  }
-  throw new Error('生成超时，请稍后重试')
-}
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)) }
 </script>
 
 <style lang="scss" scoped>

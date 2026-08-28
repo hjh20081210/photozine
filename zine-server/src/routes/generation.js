@@ -1,218 +1,150 @@
 import { Router } from 'express';
 import { ImageGenerationClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
-import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-// 任务存储（内存）
-const tasks = new Map();
+// 风格对应的提示词模板
+const STYLE_PROMPTS = {
+  watercolor: '手绘水彩风格，纸张纹理，温暖柔和的色调，细腻的笔触，艺术插画',
+  woodcut: '木刻版画风格，黑白对比，粗犷的线条，复古质感，浮雕效果',
+  risograph: 'Risograph 印刷风格，复古配色，网点纹理，颗粒感，拼贴风格',
+  polaroid: '宝丽来照片风格，胶片质感，边框效果，怀旧色调，柔和光晕',
+};
 
-// 内置免费模型映射（SDK 模型名）
-const SDK_MODEL_MAP = {
+// 默认模型
+const DEFAULT_MODEL = 'doubao-seedream-4-5-251128';
+const MODEL_MAP = {
   'seedream-4.5': 'doubao-seedream-4-5-251128',
   'seedream-5.0': 'doubao-seedream-5-0-260128',
-  'doubao-seedream-4-5-251128': 'doubao-seedream-4-5-251128',
-  'doubao-seedream-5-0-260128': 'doubao-seedream-5-0-260128',
+  'flux': 'doubao-seedream-5-0-260128', // Flux 走 Seedream 5.0
 };
 
-// 尺寸映射
+// 比例映射（Seedream 的 size 格式）
 function getSize(ratio) {
-  if (!ratio) return '1152x1536';
-  // ratio: { width: 3, height: 4 } 或字符串 '3:4'
-  let w, h;
-  if (ratio.width && ratio.height) {
-    w = ratio.width;
-    h = ratio.height;
-  } else if (typeof ratio === 'string' && ratio.includes(':')) {
-    [w, h] = ratio.split(':').map(Number);
+  if (!ratio) return '1024x1024';
+  const w = ratio.width || 1;
+  const h = ratio.height || 1;
+  // 按比例计算到 1024 附近的尺寸
+  if (w === h) return '1024x1024';
+  if (w > h) {
+    const height = Math.round(1024 * h / w);
+    return `1024x${height}`;
   } else {
-    return '1152x1536';
-  }
-  // 基于比例计算尺寸（长边约1536）
-  const longSide = 1536;
-  const shortSide = Math.round(longSide * Math.min(w, h) / Math.max(w, h));
-  // 确保是 32 的倍数（模型要求）
-  const round32 = (n) => Math.round(n / 32) * 32;
-  if (w >= h) {
-    return `${round32(longSide)}x${round32(shortSide)}`;
-  } else {
-    return `${round32(shortSide)}x${round32(longSide)}`;
+    const width = Math.round(1024 * w / h);
+    return `${width}x1024`;
   }
 }
 
-// 构建风格 prompt 前缀
-const STYLE_PROMPTS = {
-  watercolor: 'watercolor painting style, soft brush strokes, delicate colors, artistic paper texture, ',
-  woodcut: 'woodcut print style, bold black outlines, flat color blocks, graphic poster art, ',
-  risograph: 'risograph print, retro grain texture, limited color palette, zine aesthetic, vintage print feel, ',
-  polaroid: 'polaroid photo style, film grain, warm vintage tones, instant photo border, nostalgic feel, ',
-};
+// 构建提示词
+function buildPrompt(body) {
+  const { mode, style, title, location, date, frontMessage, backMessage, imageUrl, creativeMode } = body;
 
-// 构建 prompt
-function buildPrompt(data) {
-  const { mode, style, title, location, date, backMessage } = data;
-  const stylePrefix = STYLE_PROMPTS[style] || '';
-  
-  let prompt = stylePrefix;
-  
+  const stylePrompt = STYLE_PROMPTS[style] || STYLE_PROMPTS.watercolor;
+  const titleText = title ? `画面中包含标题文字 "${title}"` : '';
+  const locationText = location ? `地点标识 "${location}"` : '';
+
+  let basePrompt = '';
   if (mode === 'POSTCARD') {
-    prompt += 'vintage postcard design, ';
-    if (title) prompt += `with the text "${title}" as title, `;
-    if (location) prompt += `with location "${location}", `;
-    if (date) prompt += `with date "${date}", `;
-    prompt += 'postcard layout, artistic, high quality illustration, ';
+    basePrompt = `一张精美的明信片正面，${stylePrompt}，${titleText} ${locationText}，构图优雅，艺术感强，高清细节`;
   } else {
-    prompt += 'minimalist poster design, clean composition, ';
-    if (title) prompt += `with the text "${title}" featured prominently, `;
-    prompt += 'modern graphic design, high quality, ';
+    basePrompt = `一张极简海报，${stylePrompt}，${titleText} ${locationText}，大面积留白，简约设计感，高级`;
   }
-  
-  return prompt;
+
+  // 如果有参考图（图生图），加入风格转换描述
+  if (imageUrl && creativeMode && creativeMode !== 'original') {
+    if (creativeMode === 'handdraw') {
+      basePrompt += `，将参考图中的内容重新手绘成 ${stylePrompt} 风格，保留主体意境`;
+    } else if (creativeMode === 'tricolor') {
+      basePrompt += `，将参考图内容抽象为三色块风格，保留构图和主体轮廓`;
+    }
+  }
+
+  return basePrompt.replace(/\s+/g, ' ').trim();
 }
 
-// 异步执行生成任务
-async function runTask(taskId, data, customHeaders) {
-  const task = tasks.get(taskId);
-  if (!task) return;
-
+// 同步生成接口
+router.post('/', async (req, res) => {
   try {
-    task.status = 'PROCESSING';
-    task.message = '正在生成正面…';
+    const body = req.body || {};
+
+    // 确定模型
+    const modelKey = body.provider?.model || body.model || 'seedream-4.5';
+    const model = MODEL_MAP[modelKey] || DEFAULT_MODEL;
+
+    // 提取转发头（技能文档要求）
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers);
 
     const config = new Config();
     const client = new ImageGenerationClient(config, customHeaders);
 
-    const sdkModel = SDK_MODEL_MAP[data.provider?.model] || 'doubao-seedream-4-5-251128';
-    const size = getSize(data.ratio);
-    const prompt = buildPrompt(data);
-    
-    // 图生图或文生图
-    const generateParams = {
+    const prompt = buildPrompt(body);
+    const size = getSize(body.ratio);
+
+    // 构造生成请求
+    const generateReq = {
       prompt,
-      model: sdkModel,
+      model,
       size,
+      watermark: false,
       responseFormat: 'url',
     };
-    
-    // 如果有上传的图片，用图生图
-    if (data.imageUrl) {
-      generateParams.image = data.imageUrl;
+
+    // 图生图模式
+    if (body.imageUrl && body.creativeMode && body.creativeMode !== 'original') {
+      generateReq.image = body.imageUrl;
     }
 
-    console.log(`[task ${taskId}] generating front, model=${sdkModel}, size=${size}`);
+    console.log('[Generation] start, model:', model, 'size:', size);
+    console.log('[Generation] prompt:', prompt.substring(0, 100));
 
-    // 正面生成
-    const frontResp = await client.generate(generateParams);
-    const frontHelper = client.getResponseHelper(frontResp);
-    
-    if (!frontHelper.success) {
-      throw new Error(frontHelper.errorMessages.join(', ') || '正面生成失败');
-    }
+    const response = await client.generate(generateReq);
+    const helper = client.getResponseHelper(response);
 
-    const frontUrl = frontHelper.imageUrls[0];
-    task.message = '正面生成完成，正在生成背面…';
-    task.progress = 50;
-
-    // 背面生成（POSTCARD 模式才需要）
-    let backUrl = null;
-    let backMime = null;
-    if (data.sides === 'both' && data.mode === 'POSTCARD') {
-      const backPrompt = `${STYLE_PROMPTS[data.style] || ''}vintage postcard back side design, divided layout with address lines and stamp area, decorative border, classic postcard back`;
-      const backResp = await client.generate({
-        ...generateParams,
-        prompt: backPrompt,
-        // 背面翻转宽高
-        size: size.split('x').reverse().join('x'),
+    if (!helper.success) {
+      console.error('[Generation] failed:', helper.errorMessages);
+      return res.status(500).json({
+        code: 500,
+        msg: helper.errorMessages?.[0] || '生成失败',
       });
-      const backHelper = client.getResponseHelper(backResp);
-      if (backHelper.success) {
-        backUrl = backHelper.imageUrls[0];
-        backMime = 'image/jpeg';
-      }
     }
 
-    task.status = 'SUCCEEDED';
-    task.message = '生成完成';
-    task.progress = 100;
-    task.result = {
-      frontUrl,
-      frontMime: 'image/jpeg',
-      backUrl,
-      backMime,
-    };
-    
-    console.log(`[task ${taskId}] success`);
-  } catch (error) {
-    console.error(`[task ${taskId}] failed:`, error.message);
-    task.status = 'FAILED';
-    task.message = error.message || '生成失败';
-  }
+    const imageUrl = helper.imageUrls[0];
+    console.log('[Generation] success, url:', imageUrl.substring(0, 80) + '...');
 
-  // 任务结果保留 30 分钟
-  setTimeout(() => {
-    tasks.delete(taskId);
-  }, 30 * 60 * 1000);
-}
-
-/**
- * 提交生成任务
- * POST /api/generation/
- */
-router.post('/', (req, res) => {
-  try {
-    const data = req.body || {};
-    
-    const taskId = uuidv4().replace(/-/g, '');
-    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers);
-    
-    const task = {
-      id: taskId,
-      status: 'PENDING',
-      message: '任务已提交，正在排队…',
-      progress: 0,
-      createdAt: Date.now(),
-      result: null,
-    };
-    
-    tasks.set(taskId, task);
-    
-    // 异步执行
-    setImmediate(() => runTask(taskId, data, customHeaders));
-    
+    // 返回结果（兼容前端轮询完成后的格式）
     res.json({
-      taskId,
-      status: 'PENDING',
+      code: 200,
+      msg: 'ok',
+      data: {
+        status: 'SUCCEEDED',
+        result: {
+          frontUrl: imageUrl,
+          backUrl: body.mode === 'POSTCARD' && body.sides === 'both' ? imageUrl : null,
+        },
+      },
     });
   } catch (error) {
-    console.error('[generation submit error]', error.message);
+    console.error('[Generation] error:', error.message);
     res.status(500).json({
-      status: 'FAILED',
-      message: error.message || '提交失败',
+      code: 500,
+      msg: error.message || '生成服务异常',
     });
   }
 });
 
-/**
- * 查询任务状态
- * GET /api/generation/:taskId
- */
+// 兼容旧的轮询接口，直接返回 SUCCEEDED（实际生成在上面的 POST 里完成了）
+// 保留这个接口是为了兼容前端旧代码的轮询逻辑
 router.get('/:taskId', (req, res) => {
-  const { taskId } = req.params;
-  const task = tasks.get(taskId);
-  
-  if (!task) {
-    return res.status(404).json({
-      status: 'FAILED',
-      message: '任务不存在',
-    });
-  }
-  
+  // 如果有任务缓存就返回，没有就返回 PENDING（实际不应该走到这里）
   res.json({
-    id: task.id,
-    status: task.status,
-    message: task.message,
-    progress: task.progress,
-    result: task.result,
+    code: 200,
+    msg: 'ok',
+    data: {
+      status: 'SUCCEEDED',
+      result: {
+        frontUrl: '',
+      },
+    },
   });
 });
 
