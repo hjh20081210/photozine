@@ -12,3 +12,6 @@ target/
 .idea/
 *.iml
 .vscode/
+
+# Preview files
+.preview
