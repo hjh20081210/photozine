@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ImageGenerationClient, Config, HeaderUtils, S3Storage } from 'coze-coding-dev-sdk';
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,17 +51,40 @@ function getSize(ratio) {
   }
 }
 
+// 双面明信片：生成一张竖向长图（上半正面 + 下半反面），宽度与单面一致，高度为两倍
+function getDoubleSize(ratio) {
+  if (!ratio) return '1024x2048';
+  const w = ratio.width || 1;
+  const h = ratio.height || 1;
+  // 单面是 w:h，双面纵向展开为 w : 2h
+  if (w === h) return '1024x2048';
+  if (w > h) {
+    // 横向比例，双面纵向叠加会很长，仍以宽度为基准
+    const height = Math.round(1024 * 2 * h / w);
+    return `1024x${height}`;
+  } else {
+    const width = Math.round(1024 * w / h);
+    return `${width}x2048`;
+  }
+}
+
 // 构建提示词
 function buildPrompt(body) {
-  const { mode, style, title, location, date, frontMessage, backMessage, imageUrl, creativeMode } = body;
+  const { mode, style, title, location, date, frontMessage, backMessage, imageUrl, creativeMode, sides } = body;
 
   const stylePrompt = STYLE_PROMPTS[style] || STYLE_PROMPTS.watercolor;
   const titleText = title ? `画面中包含标题文字 "${title}"` : '';
   const locationText = location ? `地点标识 "${location}"` : '';
+  const isDouble = mode === 'POSTCARD' && sides === 'FRONT_BACK';
 
   let basePrompt = '';
   if (mode === 'POSTCARD') {
-    basePrompt = `一张精美的明信片正面，${stylePrompt}，${titleText} ${locationText}，构图优雅，艺术感强，高清细节`;
+    if (isDouble) {
+      // 双面：竖向二分构图，上半正面、下半反面，一次成图后代码裁剪
+      basePrompt = `一张竖向二分构图的明信片双面设计，${stylePrompt}，${titleText} ${locationText}。上方为明信片正面，下方为明信片反面，上下两部分对称、宽度相同，中间有一条清晰的水平分割线，整体为一张完整的竖向长图`;
+    } else {
+      basePrompt = `一张精美的明信片正面，${stylePrompt}，${titleText} ${locationText}，构图优雅，艺术感强，高清细节`;
+    }
   } else {
     basePrompt = `一张极简海报，${stylePrompt}，${titleText} ${locationText}，大面积留白，简约设计感，高级`;
   }
@@ -127,15 +151,16 @@ router.post('/', async (req, res) => {
     const client = new ImageGenerationClient(config, customHeaders);
 
     const prompt = buildPrompt(body);
-    const size = getSize(body.ratio);
+    const isDouble = body.mode === 'POSTCARD' && body.sides === 'FRONT_BACK';
+    const size = isDouble ? getDoubleSize(body.ratio) : getSize(body.ratio);
 
-    // 构造生成请求
+    // 构造生成请求；双面时返回 base64 以便本地裁剪成上下两张
     const generateReq = {
       prompt,
       model,
       size,
       watermark: false,
-      responseFormat: 'url',
+      responseFormat: isDouble ? 'b64_json' : 'url',
     };
 
     // 图生图模式：Seedream 4.5 支持图生图
@@ -165,6 +190,55 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // 双面明信片：拿到竖向长图后，用 sharp 在水平中线裁剪成上下两张（上=正面，下=反面）
+    if (isDouble) {
+      try {
+        const b64 = helper.imageB64List[0];
+        if (!b64) {
+          console.error('[Generation] double-sided: no base64 returned');
+          return res.status(500).json({ code: 500, msg: '双面生成返回数据异常' });
+        }
+        const buffer = Buffer.from(b64, 'base64');
+        const meta = await sharp(buffer).metadata();
+        const width = meta.width || 1024;
+        const height = meta.height || 2048;
+        const half = Math.floor(height / 2);
+
+        // 上半（正面）、下半（反面），均输出为 PNG
+        const frontBuffer = await sharp(buffer).extract({ left: 0, top: 0, width, height: half }).png().toBuffer();
+        const backBuffer = await sharp(buffer).extract({ left: 0, top: half, width, height: height - half }).png().toBuffer();
+
+        // 上传到对象存储获得可访问 URL
+        const ts = Date.now();
+        const frontKey = await storage.uploadFile({
+          fileContent: frontBuffer,
+          fileName: `postcard/front_${ts}.png`,
+          contentType: 'image/png',
+        });
+        const backKey = await storage.uploadFile({
+          fileContent: backBuffer,
+          fileName: `postcard/back_${ts}.png`,
+          contentType: 'image/png',
+        });
+        const frontUrl = await storage.generatePresignedUrl({ key: frontKey, expireTime: 86400 });
+        const backUrl = await storage.generatePresignedUrl({ key: backKey, expireTime: 86400 });
+
+        console.log('[Generation] double-sided success, front:', frontUrl.substring(0, 60) + '...');
+
+        return res.json({
+          code: 200,
+          msg: 'ok',
+          data: {
+            status: 'SUCCEEDED',
+            result: { frontUrl, backUrl },
+          },
+        });
+      } catch (err) {
+        console.error('[Generation] double-sided crop/upload error:', err.message);
+        return res.status(500).json({ code: 500, msg: err.message || '双面裁剪失败' });
+      }
+    }
+
     const imageUrl = helper.imageUrls[0];
     console.log('[Generation] success, url:', imageUrl.substring(0, 80) + '...');
 
@@ -176,7 +250,7 @@ router.post('/', async (req, res) => {
         status: 'SUCCEEDED',
         result: {
           frontUrl: imageUrl,
-          backUrl: body.mode === 'POSTCARD' && body.sides === 'both' ? imageUrl : null,
+          backUrl: null,
         },
       },
     });
