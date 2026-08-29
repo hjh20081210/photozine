@@ -81,9 +81,11 @@ function buildPrompt(body) {
   if (mode === 'POSTCARD') {
     if (isDouble) {
       // 双面：竖向二分构图，上半正面、下半反面，一次成图后代码裁剪
-      basePrompt = `一张竖向二分构图的明信片双面设计，${stylePrompt}，${titleText} ${locationText}。上方为明信片正面，下方为明信片反面，上下两部分对称、宽度相同，中间有一条清晰的水平分割线，整体为一张完整的竖向长图`;
+      const backNote = backMessage ? `，反面中央用毛笔毛笔手写书法字迹、仿人手书写的行楷书写留言文字 "${String(backMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，字迹自然连贯、避免机器印刷字体` : '';
+      basePrompt = `一张竖向二分构图的明信片双面设计，${stylePrompt}，${titleText} ${locationText}。上方为明信片正面，下方为明信片反面${backNote}，上下两部分对称、宽度相同，中间有一条清晰的水平分割线，整体为一张完整的竖向长图`;
     } else {
-      basePrompt = `一张精美的明信片正面，${stylePrompt}，${titleText} ${locationText}，构图优雅，艺术感强，高清细节`;
+      const frontNote = frontMessage ? `，画面中加入手写书法字迹的简短标语 "${String(frontMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，仿人手挥毫书写、字迹自然` : '';
+      basePrompt = `一张精美的明信片正面，${stylePrompt}，${titleText} ${locationText}${frontNote}，构图优雅，艺术感强，高清细节`;
     }
   } else {
     basePrompt = `一张极简海报，${stylePrompt}，${titleText} ${locationText}，大面积留白，简约设计感，高级`;

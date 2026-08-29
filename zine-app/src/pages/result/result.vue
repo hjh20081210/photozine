@@ -82,9 +82,6 @@
                 <image :src="full(preview.frontUrl)" mode="aspectFill" class="cover-img" />
               </view>
               <view v-else class="cover-ph" />
-              <view v-if="preview.backMessage" class="back-note">
-                <text class="back-note-text">{{ preview.backMessage }}</text>
-              </view>
             </view>
             <view class="foot">
               <text class="title">{{ preview.location || '作品4' }}</text>
