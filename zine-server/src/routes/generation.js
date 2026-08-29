@@ -73,28 +73,38 @@ function buildPrompt(body) {
   const { mode, style, title, location, date, frontMessage, backMessage, imageUrl, creativeMode, sides } = body;
 
   const stylePrompt = STYLE_PROMPTS[style] || STYLE_PROMPTS.watercolor;
-  const titleText = title ? `画面中包含标题文字 "${title}"` : '';
-  const locationText = location ? `地点标识 "${location}"` : '';
+  const titleText = title ? `标题文字 "${String(title).replace(/"/g, '“').replace(/\n/g, ' ')}"` : '';
+  const locationText = location ? `地点 "${String(location).replace(/"/g, '“').replace(/\n/g, ' ')}"` : '';
   const isDouble = mode === 'POSTCARD' && sides === 'FRONT_BACK';
 
   // 是否有参考照片（图生图）：核心是按参考 skill 保留照片主体，做成「照片转明信片」
   const hasPhoto = !!imageUrl;
-  const photoWrap = hasPhoto
-    ? `以参考照片为主体：完整保留照片的实景画面、构图与色彩作为明信片主体画面，仅在其上叠加明信片元素（纸张纹理边框、邮票区、标题与日期的手写排版），不要改变照片本身的内容与主体`
-    : `根据文字描述创作画面`;
+
+  // 纸张/印刷质感基调（克制的编辑设计感）
+  const editorial = '日系旅行手账明信片版式，浅米杏色做旧纸张纹理背景，大量留白，安静克制的编辑设计感，印刷感简约无衬线小字，细腻高清，不要水印，不要杂物';
 
   let basePrompt = '';
   if (mode === 'POSTCARD') {
     if (isDouble) {
       // 双面：竖向二分构图，上半正面、下半反面，一次成图后代码裁剪
-      const backNote = backMessage ? `，反面中央用毛笔毛笔手写书法字迹、仿人手书写的行楷书写留言文字 "${String(backMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，字迹自然连贯、避免机器印刷字体` : '';
-      basePrompt = `一张竖向二分构图的明信片双面设计。上方为明信片正面：${photoWrap}，${stylePrompt}，${titleText} ${locationText}；下方为明信片反面${backNote}。上下两部分对称、宽度相同，中间有一条清晰的水平分割线，整体为一张完整的竖向长图`;
+      // 反面：统一可书写明信片布局，邮票区、分割线、地址线、留言区，字迹小且写在横线上
+      const backNote = backMessage
+        ? `，反面留言区用细小、工整的手写楷书字迹写在横线上，内容为 "${String(backMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，字号要小、贴合横线，自然书写`
+        : '';
+      const frontWrap = hasPhoto
+        ? `以参考照片为主体画面上方：完整保留照片的实景画面、构图与色彩，不拉伸不裁切不重绘；下方为日系旅行手账版式，左侧约35%为文字信息栏（左侧靠左对齐，顶部数字配细分隔横线，大写粗体标题，LOCATION/DATE 两行标签加空白填写横线，底部三个水彩圆角色卡色块），右侧约65%为将照片主元素转化为克制的手绘水彩/墨线插画，插画被不规则水彩淡墨晕染边框包裹，颜料扩散斑驳水痕，半透明水彩质感，低饱和柔和色彩，柔和平涂`
+        : `根据文字描述创作画面，下方为日系旅行手账版式，左侧约35%文字信息栏，右侧约65%水彩手绘插画区`;
+      basePrompt = `一张竖向二分构图的明信片双面设计，上方为明信片正面，下方为明信片反面。正面：${frontWrap}，${titleText}，${locationText}；反面：统一可书写的明信片背面布局，包括邮票区、分割线、地址线和留言区域${backNote}。正面与反面宽度相同、上下对称，中间一条清晰水平分割线，整体为一张完整竖向长图。${editorial}`;
     } else {
-      const frontNote = frontMessage ? `，画面角落加入一处手写书法字迹的简短标语 "${String(frontMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，仿人手挥毫书写、字迹自然` : '';
-      basePrompt = `一张精美的明信片正面：${photoWrap}，${stylePrompt}，${titleText} ${locationText}${frontNote}，构图优雅，高清细节`;
+      // 单面正面：左35%文字栏 + 右65%水彩插画区（日系旅行手账），保留照片主体
+      const frontWrap = hasPhoto
+        ? `以参考照片为主体：在画面右侧约65%区域将照片主元素转化为克制的手绘水彩/墨线/水粉插画，画面被不规则水彩淡墨晕染边框包裹，颜料扩散斑驳水痕，半透明水彩质感，低饱和柔和色彩，柔和平涂；左侧约35%区域为文字信息栏，垂直靠左对齐，顶部数字配细分割横线，大写粗体标题，LOCATION/DATE 两行标签加空白填写横线，底部三个水彩晕染毛边圆角色卡色块`
+        : `日系旅行手账明信片正面，左侧约35%文字信息栏，右侧约65%水彩手绘插画区`;
+      const frontNote = frontMessage ? `，画面角落加入一处细小克制的手写书法字迹 "${String(frontMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"` : '';
+      basePrompt = `一张精美的日系旅行手账明信片正面：${frontWrap}，${titleText}，${locationText}${frontNote}。${editorial}`;
     }
   } else {
-    basePrompt = `一张极简海报，${photoWrap}，${stylePrompt}，${titleText} ${locationText}，大面积留白，简约设计感，高级`;
+    basePrompt = `一张极简海报，${hasPhoto ? '以参考照片为主体画面，保留照片构图与色彩，边缘留白' : '根据文字描述创作画面'}，${stylePrompt}，${titleText} ${locationText}，大面积留白，简约设计感，高级`;
   }
 
   return basePrompt.replace(/\s+/g, ' ').trim();
