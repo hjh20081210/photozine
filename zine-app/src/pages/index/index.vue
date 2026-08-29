@@ -910,11 +910,11 @@ async function onGenerate() {
   genStatus.value = '正在提交…'
   genStep.value = 0
   try {
-    // 注意：当前版本暂不支持图生图，上传的照片用于记录和展示
-    // 生成时使用文本描述，不传图片 URL
+    // Seedream 4.5 支持图生图：根据作画风格（原图保留/手绘二创/三色块采样）传图
     const data = {
-      // imageUrl: photo.value ? photo.value.url : null,  // 暂时禁用
-      // creativeMode: 'handdraw',  // 暂时禁用
+      imageUrl: photo.value ? photo.value.url : null,
+      // 映射作画风格到后端 creativeMode：original/hand_draw_2/tri_sample
+      creativeMode: paintChip.value,
       mode: mode.value,
       sides: sides.value,
       ratio: { width: ratio.value.w, height: ratio.value.h },
@@ -952,7 +952,6 @@ async function onGenerate() {
       title: title.value,
       location: location.value,
       date: date.value,
-      frontMessage: frontMessage.value,
       backMessage: backMessage.value,
       ratio: ratio.value,
       frontUrl: result.frontUrl,

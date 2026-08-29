@@ -67,9 +67,9 @@ function buildPrompt(body) {
 
   // 如果有参考图（图生图），加入风格转换描述
   if (imageUrl && creativeMode && creativeMode !== 'original') {
-    if (creativeMode === 'handdraw') {
+    if (creativeMode === 'handdraw' || creativeMode === 'hand_draw_2') {
       basePrompt += `，将参考图中的内容重新手绘成 ${stylePrompt} 风格，保留主体意境`;
-    } else if (creativeMode === 'tricolor') {
+    } else if (creativeMode === 'tricolor' || creativeMode === 'tri_sample') {
       basePrompt += `，将参考图内容抽象为三色块风格，保留构图和主体轮廓`;
     }
   }
@@ -77,11 +77,11 @@ function buildPrompt(body) {
   return basePrompt.replace(/\s+/g, ' ').trim();
 }
 
-// 处理图片 URL：如果是本地路径，上传到对象存储并返回签名 URL
+// 处理图片：返回 base64 data URL（SDK 会跳过 URL 可达性校验，对象存储签名 URL 的 HEAD 请求会 403）
 async function processImageUrl(imageUrl) {
   if (!imageUrl) return null;
   
-  // 如果是相对路径（/upload/xxx.jpg），上传到对象存储
+  // 如果是相对路径（/upload/xxx.jpg），读取本地文件转 base64
   if (imageUrl.startsWith('/upload/')) {
     const uploadDir = process.env.UPLOAD_DIR || '/tmp/zine-upload';
     const filename = imageUrl.replace('/upload/', '');
@@ -93,31 +93,21 @@ async function processImageUrl(imageUrl) {
         const fileBuffer = fs.readFileSync(filePath);
         const ext = path.extname(filename).toLowerCase();
         const contentType = ext === '.png' ? 'image/png' : 'image/jpeg';
-        
-        // 上传到对象存储
-        console.log('[processImageUrl] uploading to storage:', filename);
-        const fileKey = await storage.uploadFile({
-          fileContent: fileBuffer,
-          fileName: `zine-images/${filename}`,
-          contentType,
-        });
-        
-        // 生成签名 URL（有效期 1 天）
-        const signedUrl = await storage.generatePresignedUrl({
-          key: fileKey,
-          expireTime: 86400,
-        });
-        
-        console.log('[processImageUrl] uploaded, url:', signedUrl.substring(0, 80) + '...');
-        return signedUrl;
+        const base64 = fileBuffer.toString('base64');
+        const dataUrl = `data:${contentType};base64,${base64}`;
+        console.log('[processImageUrl] read local file, bytes:', fileBuffer.length);
+        return dataUrl;
+      } else {
+        console.error('[processImageUrl] file not found:', filePath);
+        return null;
       }
     } catch (err) {
-      console.error('[processImageUrl] upload error:', err.message);
+      console.error('[processImageUrl] read error:', err.message);
       return null;
     }
   }
   
-  // 如果是完整 URL，直接返回
+  // 如果是完整 URL，校验后返回（SDK 会对 URL 做 HEAD 校验，可能 403）
   return imageUrl;
 }
 
@@ -148,15 +138,18 @@ router.post('/', async (req, res) => {
       responseFormat: 'url',
     };
 
-    // 图生图模式：暂时禁用，因为 Seedream 4.5 可能不支持
-    // TODO: 确认模型支持后再开启
-    // if (body.imageUrl && body.creativeMode && body.creativeMode !== 'original') {
-    //   const processedImageUrl = await processImageUrl(body.imageUrl);
-    //   if (processedImageUrl) {
-    //     generateReq.image = processedImageUrl;
-    //     console.log('[Generation] image mode:', body.creativeMode, 'url type:', processedImageUrl.startsWith('data:') ? 'base64' : 'url');
-    //   }
-    // }
+    // 图生图模式：Seedream 4.5 支持图生图
+    if (body.imageUrl && body.creativeMode && body.creativeMode !== 'original') {
+      try {
+        const processedImageUrl = await processImageUrl(body.imageUrl);
+        if (processedImageUrl) {
+          generateReq.image = processedImageUrl;
+          console.log('[Generation] image mode:', body.creativeMode, 'url type:', processedImageUrl.startsWith('data:') ? 'base64' : 'url');
+        }
+      } catch (imgErr) {
+        console.error('[Generation] image process error:', imgErr.message);
+      }
+    }
 
     console.log('[Generation] start, model:', model, 'size:', size);
     console.log('[Generation] prompt:', prompt.substring(0, 100));
