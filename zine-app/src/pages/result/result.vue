@@ -40,12 +40,33 @@
             <text class="badge">正</text>
           </view>
 
-          <!-- 背面卡片：正反面模式下才展示 -->
-          <view v-if="preview.sides === 'FRONT_BACK'" class="zine-card" @click="openPreview(full(preview.backUrl))">
+          <!-- 背面卡片：正反面模式下才展示（前端精确渲染标准明信片背面） -->
+          <view v-if="preview.sides === 'FRONT_BACK'" class="zine-card" @click="openPreviewImg">
             <view class="cover">
-              <image v-if="preview.backUrl" :src="full(preview.backUrl)" mode="aspectFit" class="cover-img" />
-              <view v-else class="cover-ph back-ph">
-                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#C8B9A8" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h10M7 12h10M7 15h6" /></svg>
+              <!-- 标准中式明信片背面：左上邮编框 + 右上邮票 + 右栏(留言在上/地址在下) -->
+              <view class="postcard-back">
+                <view class="pb-top">
+                  <view class="pb-zip">
+                    <view v-for="i in 6" :key="i" class="pb-zip-box"></view>
+                  </view>
+                  <view class="pb-stamp">
+                    <text class="pb-stamp-text">邮 票</text>
+                  </view>
+                </view>
+                <view class="pb-body">
+                  <view class="pb-divider"></view>
+                  <view class="pb-mail">
+                    <!-- 留言区：多排横线，留言从第一排空两格开始书写 -->
+                    <view v-for="i in 5" :key="'m'+i" class="pb-mail-line">
+                      <text v-if="i === 1" class="pb-mail-text">{{ '　　' + (backMessageText || '') }}</text>
+                    </view>
+                  </view>
+                  <view class="pb-addr">
+                    <text class="pb-addr-label">收件人地址</text>
+                    <view class="pb-addr-main"></view>
+                    <view class="pb-addr-sub"></view>
+                  </view>
+                </view>
               </view>
             </view>
             <view class="foot">
@@ -111,6 +132,14 @@ function openPreview(url) {
 function closePreview() {
   previewImg.value = ''
 }
+// 背面：前端DOM渲染，放大时仍用AI背面图（如有），否则提示不支持
+function openPreviewImg() {
+  if (preview.backUrl) {
+    previewImg.value = full(preview.backUrl)
+  }
+}
+// 背面留言文本（预览空两格用）
+const backMessageText = computed(() => preview?.backMessage || '')
 
 function saveSingle() {
   if (previewImg.value) {
@@ -437,5 +466,121 @@ function saveImage(url) {
   font-size: 30rpx;
   font-weight: 800;
   letter-spacing: 0.5rpx;
+}
+
+/* ============ 标准明信片背面（前端DOM精确渲染） ============ */
+.postcard-back {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  background:
+    radial-gradient(120% 90% at 15% 8%, rgba(255,255,255,0.75), transparent 55%),
+    linear-gradient(160deg, #f7f0e2 0%, #f2e8d4 45%, #ede0c8 100%);
+  border: 1rpx solid #e2d4b6;
+  box-sizing: border-box;
+  padding: 28rpx 34rpx;
+  color: #6b5735;
+  position: relative;
+  overflow: hidden;
+}
+.postcard-back::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(130,105,60,0.05) 1rpx, transparent 1rpx);
+  background-size: 8rpx 8rpx;
+}
+.pb-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 18rpx;
+}
+.pb-zip {
+  display: flex;
+  gap: 8rpx;
+}
+.pb-zip-box {
+  width: 30rpx; height: 30rpx;
+  border: 2rpx solid #a98e5e;
+  border-radius: 2rpx;
+}
+.pb-stamp {
+  width: 76rpx; height: 96rpx;
+  border: 2rpx solid #b79a63;
+  border-radius: 4rpx;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: #fbf6ea;
+}
+.pb-stamp-text {
+  font-size: 18rpx;
+  color: #b79a63;
+  letter-spacing: 2rpx;
+}
+.pb-stamp::after {
+  content: '';
+  position: absolute;
+  inset: 3rpx;
+  border: 1rpx dashed #c9ad7b;
+  border-radius: 2rpx;
+}
+.pb-body {
+  flex: 1;
+  display: flex;
+}
+.pb-divider {
+  width: 2rpx;
+  background: linear-gradient(180deg, transparent, #b79a63 12%, #b79a63 88%, transparent);
+  margin: 0 26rpx;
+}
+.pb-mail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 4rpx;
+}
+.pb-mail-line {
+  flex: 1;
+  border-bottom: 1.5rpx solid #c9ad7b;
+  margin-bottom: 20rpx;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 6rpx 4rpx;
+}
+.pb-mail-text {
+  font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', '楷体', serif;
+  font-size: 44rpx;
+  color: #4a3a1e;
+  letter-spacing: 2rpx;
+  line-height: 1;
+  /* 首行空两格 */
+  text-indent: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+.pb-addr {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 4rpx;
+}
+.pb-addr-label {
+  font-size: 24rpx;
+  color: #7a6338;
+  letter-spacing: 4rpx;
+  margin-bottom: 8rpx;
+  font-family: 'STKaiti', 'KaiTi', '楷体', serif;
+}
+.pb-addr-main {
+  flex: 1;
+  border-bottom: 1.5rpx solid #c9ad7b;
+  margin-bottom: 16rpx;
+}
+.pb-addr-sub {
+  flex: 1;
+  border-bottom: 1.5rpx solid #c9ad7b;
 }
 </style>
