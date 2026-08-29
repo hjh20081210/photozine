@@ -157,7 +157,13 @@ async function loadHistory() {
       ratioText: (x.ratio && x.ratio.width && x.ratio.height) ? `${x.ratio.width}:${x.ratio.height}` : '2:3',
     }))
   } catch (e) {
-    items.value = []
+    // 接口失败时用本地缓存兜底
+    const local = uni.getStorageSync('zine_local_history') || []
+    items.value = (Array.isArray(local) ? local : []).map((x) => ({
+      ...x,
+      createdAtShort: formatTime(x.createdAt),
+      ratioText: (x.ratio && x.ratio.width && x.ratio.height) ? `${x.ratio.width}:${x.ratio.height}` : '2:3',
+    }))
   } finally {
     loading.value = false
   }

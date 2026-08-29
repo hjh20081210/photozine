@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import uploadRouter from './routes/upload.js';
 import generationRouter from './routes/generation.js';
+import historyRouter from './routes/history.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +45,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/file', uploadRouter);
 // 图像生成
 app.use('/api/generation', generationRouter);
+// 历史记录
+app.use('/api/history', historyRouter);
 // 上传的文件静态访问
 const uploadDir = process.env.UPLOAD_PATH || '/tmp/zine-upload';
 app.use('/upload', express.static(uploadDir));

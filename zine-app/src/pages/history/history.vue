@@ -61,7 +61,13 @@ async function load() {
   try {
     items.value = await request('/api/history', { timeout: 8000 })
   } catch (e) {
-    uni.showToast({ title: '无法连接服务器', icon: 'none' })
+    // 兜底：读本地缓存
+    const local = uni.getStorageSync('zine_local_history') || []
+    if (local.length) {
+      items.value = local
+    } else {
+      uni.showToast({ title: '无法连接服务器', icon: 'none' })
+    }
   } finally {
     loading.value = false
   }

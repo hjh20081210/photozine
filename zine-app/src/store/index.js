@@ -264,6 +264,60 @@ const store = reactive({
     return this.serverUrl.replace(/\/+$/, '') + path
   },
 
+  /* ============ 历史记录 ============ */
+
+  /** 保存一条历史记录 */
+  addHistory(item) {
+    if (!item || (!item.frontUrl && !item.backUrl)) return
+    const payload = {
+      id: item.id || `history_${Date.now()}`,
+      frontUrl: item.frontUrl || '',
+      backUrl: item.backUrl || null,
+      thumbUrl: item.thumbUrl || item.frontUrl || '',
+      style: item.style || '手绘水彩',
+      styleName: item.styleName || item.style || '手绘水彩',
+      ratio: item.ratio || { width: 3, height: 2 },
+      mode: item.mode || 'POSTCARD',
+      sides: item.sides || 'FRONT_BACK',
+      title: item.title || '',
+      location: item.location || '',
+      date: item.date || '',
+      backMessage: item.backMessage || '',
+      modelName: item.provider || '',
+      createdAt: item.createdAt || Date.now(),
+    }
+    // 本地兜底缓存
+    const local = uni.getStorageSync('zine_local_history') || []
+    const localItem = { ...payload, localId: payload.id }
+    const li = local.findIndex((x) => x.id === payload.id)
+    if (li >= 0) local.splice(li, 1)
+    local.unshift(localItem)
+    uni.setStorageSync('zine_local_history', local.slice(0, 50))
+
+    // 异步同步到服务器，失败不阻断主流程
+    uni.request({
+      url: this.serverUrl.replace(/\/+$/, '') + '/api/history',
+      method: 'POST',
+      header: { 'Content-Type': 'application/json' },
+      data: payload,
+      success: () => {},
+      fail: () => {},
+    })
+  },
+
+  /** 删除一条历史 */
+  removeHistory(id) {
+    if (!id) return
+    const local = uni.getStorageSync('zine_local_history') || []
+    uni.setStorageSync('zine_local_history', local.filter((x) => x.id !== id))
+    uni.request({
+      url: this.serverUrl.replace(/\/+$/, '') + '/api/history/' + id,
+      method: 'DELETE',
+      success: () => {},
+      fail: () => {},
+    })
+  },
+
   /* ============ 隐私协议 ============ */
   agreePrivacy() {
     this.privacyAgreed = true
