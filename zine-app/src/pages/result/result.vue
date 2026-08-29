@@ -266,7 +266,7 @@ function saveImage(url) {
       link.click()
       window.URL.revokeObjectURL(blobUrl)
       link.remove()
-      uni.showToast({ title: '已开始下载', icon: 'none' })
+      uni.showToast({ title: '已下载，可在浏览器下载中查收', icon: 'none' })
     })
     .catch((e) => {
       uni.hideLoading()

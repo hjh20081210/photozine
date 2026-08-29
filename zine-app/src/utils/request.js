@@ -22,7 +22,9 @@ export function request(path, { method = 'GET', data = null, timeout = 15000, si
       method,
       data,
       timeout,
-      header: { 'Content-Type': 'application/json' },
+      header: store.token
+        ? { 'Content-Type': 'application/json', 'x-session': store.token }
+        : { 'Content-Type': 'application/json' },
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data)

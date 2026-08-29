@@ -6,6 +6,8 @@ const KEY_MODEL_CONFIGS = 'zine_model_configs'    // 新：多套配置数组
 const KEY_ACTIVE_CONFIG_ID = 'zine_active_config' // 新：当前选中的配置ID
 const KEY_PRIVACY_AGREED = 'zine_privacy_agreed'  // 隐私协议是否同意
 const KEY_FIRST_OPEN = 'zine_first_open'          // 是否首次打开
+const KEY_AUTH_TOKEN = 'zine_auth_token'          // 登录 token
+const KEY_AUTH_USER = 'zine_auth_user'            // 登录用户信息
 
 const PROVIDER_NAME_MAP = {
   openai: 'OpenAI',
@@ -56,6 +58,45 @@ const store = reactive({
 
   preview: null,   // 结果页预览数据：{taskId, frontUrl, backUrl, ratio, styleName, sides, mode}
   meta: null,      // /api/meta 缓存：{styles, providers, ratios}
+
+  /* ============ 登录状态 ============ */
+  token: '',
+  user: null,      // {id, username, isAdmin, createdAt} 或 null
+
+  loadAuth() {
+    this.token = uni.getStorageSync(KEY_AUTH_TOKEN) || ''
+    const u = uni.getStorageSync(KEY_AUTH_USER)
+    this.user = (u && typeof u === 'object') ? u : null
+  },
+
+  saveAuth(token, user) {
+    this.token = token || ''
+    this.user = user || null
+    if (this.token) uni.setStorageSync(KEY_AUTH_TOKEN, this.token)
+    else uni.removeStorageSync(KEY_AUTH_TOKEN)
+    if (this.user) uni.setStorageSync(KEY_AUTH_USER, this.user)
+    else uni.removeStorageSync(KEY_AUTH_USER)
+  },
+
+  login(data) {
+    if (!data) return null
+    const token = data.token || ''
+    const user = data.user || (data.isAdmin !== undefined ? { id: data.id, username: data.username, isAdmin: data.isAdmin, createdAt: data.createdAt } : null)
+    this.saveAuth(token, user)
+    this.meta = null
+    return user
+  },
+
+  logout() {
+    this.clearAuth()
+  },
+
+  clearAuth() {
+    this.token = ''
+    this.user = null
+    uni.removeStorageSync(KEY_AUTH_TOKEN)
+    uni.removeStorageSync(KEY_AUTH_USER)
+  },
 
   /* ============ 免费模型定义 ============ */
   // 所有用户默认可用的免费模型，通过本地生成代理调用，无需配置 API Key

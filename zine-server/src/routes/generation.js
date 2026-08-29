@@ -60,9 +60,9 @@ const MODEL_MAP = {
   'flux': 'doubao-seedream-5-0-260128',
 };
 
-// 字体族：英文衬线（正文标题用）+ 中文微米黑（CJK 回退）
-const FONT_SERIF = "'Liberation Serif', 'DejaVu Serif', serif";
-const FONT_CN = "'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif";
+// 字体族：柔和手写感（霞鹜文楷，通中英文，替代标准印刷体）+ 中文回退
+const FONT_SERIF = "'LXGWWenKai-Regular', 'WenQuanYi Micro Hei', 'Noto Sans CJK SC', 'Liberation Serif', serif";
+const FONT_CN = "'LXGWWenKai-Regular', 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif";
 
 // 比例 -> 画布像素尺寸（保持比例，最长边 1024）
 function getSize(ratio) {
@@ -80,6 +80,15 @@ function getSize(ratio) {
 // 中文字符需要宽一点（半角）
 function esc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 在指定位置绘制一个"油画/水彩笔刷涂抹感"的色块（不规则形 + 半透明交叠 + 圆角边缘）
+function brushSwatch(x, y, size, color) {
+  const s = size;
+  return `<g>
+    <path d="M${x + s * 0.06} ${y + s * 0.18} Q${x - s * 0.02} ${y + s * 0.06} ${x + s * 0.30} ${y + s * 0.05} Q${x + s * 0.62} ${y - s * 0.02} ${x + s * 0.72} ${y + s * 0.22} Q${x + s * 0.95} ${y + s * 0.38} ${x + s * 0.88} ${y + s * 0.62} Q${x + s * 0.80} ${y + s * 0.88} ${x + s * 0.52} ${y + s * 0.92} Q${x + s * 0.22} ${y + s * 0.98} ${x + s * 0.12} ${y + s * 0.78} Q${x - s * 0.02} ${y + s * 0.58} ${x + s * 0.06} ${y + s * 0.32} Z" fill="${color}" opacity="0.92"/>
+    <path d="M${x + s * 0.16} ${y + s * 0.10} Q${x + s * 0.40} ${y - s * 0.02} ${x + s * 0.58} ${y + s * 0.14} Q${x + s * 0.80} ${y + s * 0.24} ${x + s * 0.66} ${y + s * 0.50} Q${x + s * 0.54} ${y + s * 0.70} ${x + s * 0.30} ${y + s * 0.62} Q${x + s * 0.10} ${y + s * 0.56} ${x + s * 0.16} ${y + s * 0.28} Z" fill="${color}" opacity="0.55"/>
+  </g>`;
 }
 
 // 从参考照片提取 3 个主色（用于正面左侧色块）
@@ -189,9 +198,9 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
     <text x="${pad}" y="${Math.round(canvasH * 0.60)}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.065)}" fill="${labelColor}">DATE</text>
     ${dateText ? `<text x="${leftW - pad}" y="${Math.round(canvasH * 0.60)}" text-anchor="end" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.055)}" fill="${subColor}">${dateText}</text>` : ''}
     <line x1="${pad}" y1="${Math.round(canvasH * 0.60) + 10}" x2="${leftW - pad}" y2="${Math.round(canvasH * 0.60) + 10}" stroke="${labelColor}" stroke-width="1"/>
-    <rect x="${pad}" y="${swatchY}" width="${swatchSize}" height="${swatchSize}" rx="${Math.round(swatchSize * 0.25)}" fill="${swatch[0]}"/>
-    <rect x="${pad + swatchSize + 14}" y="${swatchY}" width="${swatchSize}" height="${swatchSize}" rx="${Math.round(swatchSize * 0.25)}" fill="${swatch[1]}"/>
-    <rect x="${pad + (swatchSize + 14) * 2}" y="${swatchY}" width="${swatchSize}" height="${swatchSize}" rx="${Math.round(swatchSize * 0.25)}" fill="${swatch[2]}"/>
+    ${brushSwatch(pad, swatchY, swatchSize, swatch[0])}
+    ${brushSwatch(pad + swatchSize + 14, swatchY, swatchSize, swatch[1])}
+    ${brushSwatch(pad + (swatchSize + 14) * 2, swatchY, swatchSize, swatch[2])}
   </svg>`;
   const svgBuf = await sharp(Buffer.from(svg)).png().toBuffer();
 
@@ -211,7 +220,7 @@ async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
 
   // 左侧线稿铺满左半（铺到 94% 宽，留出周边白边）
   const lineSized = await sharp(lineBuffer)
-    .resize(Math.round(canvasW * 0.42), Math.round(canvasH * 0.72), { fit: 'contain', background: { r: 255, g: 255, b: 255 } })
+    .resize(Math.round(canvasW * 0.42), Math.round(canvasH * 0.72), { fit: 'contain', background: { r: 245, g: 238, b: 224 } })
     .png().toBuffer();
 
   const boxSize = Math.round(canvasW * 0.030);
@@ -224,22 +233,23 @@ async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
     zipSvg += `<rect x="${zipX + i * (boxSize + boxGap)}" y="${zipY}" width="${boxSize}" height="${boxSize}" fill="none" stroke="#C39A6B" stroke-width="1.5"/>`;
   }
 
-  const stampSize = Math.round(canvasW * 0.15);
+  const stampSize = Math.round(canvasW * 0.054);
   const stampX = Math.round(canvasW * 0.80);
   const stampY = zipY;
 
-  // 留言区：右栏上方，多排，从第一排空两格开始书写
+  // 留言区：右栏上方，多排，从第一排空两格开始书写（邮票区下方避开）
   const mailX = rightX;
   const mailW = canvasW - rightX - Math.round(canvasW * 0.04);
-  const mailTop = Math.round(canvasH * 0.16);
-  const lineGap = Math.round(canvasH * 0.12);
+  const mailTop = Math.round(canvasH * 0.36);
+  const lineGap = Math.round(canvasH * 0.11);
   const msg = esc(backMessage && String(backMessage).trim() ? String(backMessage).trim() : '');
+  const fontSize = Math.round(canvasH * 0.042);
+  const indentW = fontSize * 2; // 空两格（两个汉字宽度）
   let mailLines = '';
   for (let i = 0; i < 4; i++) {
     const y = mailTop + i * lineGap;
-    // 第一排空两格（缩进两个汉字宽度）
-    const indent = i === 0 ? '　　' : '';
-    mailLines += `<text x="${mailX + Math.round(canvasW * 0.02)}" y="${y}" font-family="${FONT_CN}" font-size="${Math.round(canvasH * 0.05)}" fill="#6B5F53">${indent}${esc(msg.split('\n').slice(0, 4)[i] || '')}</text>`;
+    const x = i === 0 ? mailX + Math.round(canvasW * 0.02) + indentW : mailX + Math.round(canvasW * 0.02);
+    mailLines += `<text x="${x}" y="${y}" font-family="${FONT_CN}" font-size="${fontSize}" fill="#6B5F53">${esc(msg.split('\n').slice(0, 4)[i] || '')}</text>`;
   }
   // 留言横线
   let mlines = '';
@@ -253,14 +263,13 @@ async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
   const addrLabel = esc('TO · 收件人地址');
   const addrText = esc('POSTAL ADDRESS');
   const addrSvg = `
-    <text x="${mailX}" y="${addrY}" font-family="${FONT_SERIF}" font-size="${Math.round(canvasH * 0.045)}" fill="#8A7B6A">${addrLabel}</text>
-    <line x1="${mailX}" y1="${addrY + 14}" x2="${canvasW - Math.round(canvasW * 0.04)}" y2="${addrY + 14}" stroke="#2C241E" stroke-width="1"/>
-    <line x1="${mailX}" y1="${addrY + 34}" x2="${canvasW - Math.round(canvasW * 0.04)}" y2="${addrY + 34}" stroke="#D9CCBB" stroke-width="1"/>
-    <line x1="${mailX}" y1="${addrY + 54}" x2="${canvasW - Math.round(canvasW * 0.04)}" y2="${addrY + 54}" stroke="#D9CCBB" stroke-width="1"/>
+    <text x="${mailX}" y="${addrY}" font-family="${FONT_CN}" font-size="${Math.round(canvasH * 0.032)}" fill="#8A7B6A">${addrLabel}</text>
+    <line x1="${mailX}" y1="${addrY + 10}" x2="${canvasW - Math.round(canvasW * 0.04)}" y2="${addrY + 10}" stroke="#2C241E" stroke-width="1"/>
+    <line x1="${mailX}" y1="${addrY + 26}" x2="${canvasW - Math.round(canvasW * 0.04)}" y2="${addrY + 26}" stroke="#D9CCBB" stroke-width="1"/>
+    <line x1="${mailX}" y1="${addrY + 42}" x2="${canvasW - Math.round(canvasW * 0.04)}" y2="${addrY + 42}" stroke="#D9CCBB" stroke-width="1"/>
   `;
 
   const svg = `<svg width="${canvasW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100%" height="100%" fill="#FBF6EC"/>
     ${zipSvg}
     <rect x="${stampX}" y="${stampY}" width="${stampSize}" height="${stampSize}" fill="none" stroke="#C39A6B" stroke-width="1.5"/>
     <line x1="${Math.round(canvasW * 0.42)}" y1="${Math.round(canvasH * 0.06)}" x2="${Math.round(canvasW * 0.42)}" y2="${Math.round(canvasH * 0.90)}" stroke="#DCCDB8" stroke-width="1" stroke-dasharray="4 4"/>
@@ -270,10 +279,10 @@ async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
   </svg>`;
   const svgBuf = await sharp(Buffer.from(svg)).png().toBuffer();
 
-  // 底线稿放左侧区域
-  return await sharp({ create: { width: canvasW, height: canvasH, channels: 3, background: { r: 251, g: 246, b: 236 } } })
+  // 底线稿放左半（SVG 应为透明底，不遮挡线稿）
+  return await sharp({ create: { width: canvasW, height: canvasH, channels: 4, background: { r: 251, g: 246, b: 236, alpha: 1 } } })
     .composite([
-      { input: lineSized, left: Math.round(canvasW * 0.03), top: Math.round(canvasH * 0.16) },
+      { input: lineSized, left: Math.round(canvasW * 0.045), top: Math.round(canvasH * 0.14) },
       { input: svgBuf, left: 0, top: 0 },
     ])
     .png().toBuffer();

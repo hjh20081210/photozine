@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import uploadRouter from './routes/upload.js';
 import generationRouter from './routes/generation.js';
 import historyRouter from './routes/history.js';
+import authRouter from './routes/auth.js';
+import feedbackRouter from './routes/feedback.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +49,10 @@ app.use('/api/file', uploadRouter);
 app.use('/api/generation', generationRouter);
 // 历史记录
 app.use('/api/history', historyRouter);
+// 账号认证（注册/登录/GitHub OAuth/会话/用户管理）
+app.use('/api/auth', authRouter);
+// 意见反馈
+app.use('/api/feedback', feedbackRouter);
 // 上传的文件静态访问
 const uploadDir = process.env.UPLOAD_PATH || '/tmp/zine-upload';
 app.use('/upload', express.static(uploadDir));

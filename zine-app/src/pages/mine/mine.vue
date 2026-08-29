@@ -10,6 +10,35 @@
     </view>
 
     <scroll-view scroll-y class="body" :style="{ paddingBottom: '60rpx' }">
+      <!-- 登录状态卡片 -->
+      <view class="auth-card">
+        <template v-if="user">
+          <view class="auth-avatar">{{ (user.username || 'U').slice(0, 1) }}</view>
+          <view class="auth-info">
+            <text class="auth-name">{{ user.username }}</text>
+            <text class="auth-role" :class="{ admin: user.isAdmin }">{{ user.isAdmin ? '管理员' : '普通用户' }}</text>
+          </view>
+          <view class="auth-logout" @click="logout">
+            <text>退出</text>
+          </view>
+        </template>
+        <template v-else>
+          <view class="auth-avatar guest">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 21c1-4 4-6 8-6s7 2 8 6" />
+            </svg>
+          </view>
+          <view class="auth-info">
+            <text class="auth-name">未登录</text>
+            <text class="auth-role">登录后同步作品与账号</text>
+          </view>
+          <view class="auth-logout primary" @click="goLogin">
+            <text>登录 / 注册</text>
+          </view>
+        </template>
+      </view>
+
       <!-- 作品列表：2列网格 与参考图完全一致 -->
       <view class="zine-grid">
         <!-- 占位4张，展示网格样式 + 加载历史 -->
@@ -80,6 +109,35 @@
         </view>
       </view>
 
+      <!-- 意见反馈 -->
+      <view class="line-item" @click="goFeedback">
+        <view class="li-left">
+          <view class="li-ico fb-ico">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </view>
+          <text class="li-txt serif">意见反馈</text>
+        </view>
+        <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+      </view>
+
+      <!-- 管理员：用户管理 -->
+      <view v-if="user && user.isAdmin" class="line-item" @click="goAdminUsers">
+        <view class="li-left">
+          <view class="li-ico admin-ico">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </view>
+          <text class="li-txt serif">用户管理</text>
+        </view>
+        <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+      </view>
+
       <!-- 草稿 / MIT / Github -->
       <view class="line-item" @click="toast('草稿')">
         <text class="li-txt serif">草稿</text>
@@ -116,8 +174,34 @@ import AppTabbar from '@/components/AppTabbar.vue'
 
 const items = ref([])
 const loading = ref(true)
+const user = ref(null)
 
 const displayList = computed(() => items.value)
+
+onMounted(() => {
+  loadHistory()
+  syncUser()
+})
+
+function syncUser() {
+  store.loadAuth()
+  user.value = store.user
+}
+
+function goLogin() {
+  uni.navigateTo({ url: '/pages/login/login' })
+}
+function goFeedback() {
+  uni.navigateTo({ url: '/pages/feedback/feedback' })
+}
+function goAdminUsers() {
+  uni.navigateTo({ url: '/pages/admin-users/admin-users' })
+}
+function logout() {
+  store.clearAuth()
+  user.value = null
+  uni.showToast({ title: '已退出登录', icon: 'none' })
+}
 
 function formatTime(t) {
   if (!t) return '—'
