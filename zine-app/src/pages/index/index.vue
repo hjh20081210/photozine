@@ -483,8 +483,6 @@ import AppTabbar from '@/components/AppTabbar.vue'
 import ImageCropper from '@/components/ImageCropper.vue'
 
 const photo = ref(null)
-const frontResult = ref(null)
-const backResult = ref(null)
 const mode = ref('POSTCARD')
 const sides = ref('FRONT_BACK')
 const ratio = ref({ w: 2, h: 3 })
