@@ -46,6 +46,9 @@
               <view v-else class="cover-ph back-ph">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#C8B9A8" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h10M7 12h10M7 15h6" /></svg>
               </view>
+              <view v-if="preview.backMessage" class="back-note">
+                <text class="back-note-text">{{ preview.backMessage }}</text>
+              </view>
             </view>
             <view class="foot">
               <text class="title">{{ preview.location || '背面' }}</text>
@@ -79,6 +82,9 @@
                 <image :src="full(preview.frontUrl)" mode="aspectFill" class="cover-img" />
               </view>
               <view v-else class="cover-ph" />
+              <view v-if="preview.backMessage" class="back-note">
+                <text class="back-note-text">{{ preview.backMessage }}</text>
+              </view>
             </view>
             <view class="foot">
               <text class="title">{{ preview.location || '作品4' }}</text>
@@ -236,6 +242,14 @@ function saveImage(url) {
 <style lang="scss" scoped>
 .page { min-height: 100vh; }
 
+/* ---------- 中文书法手写字体（马善政楷书） ---------- */
+/* Google Fonts 中国大陆域名，需在 CSS 顶部引入避免 hydrate 问题 */
+@import url('https://fonts.googleapis.cn/css2?family=Ma+Shan+Zheng&display=swap');
+
+.calligraphy {
+  font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', '楷体', serif;
+}
+
 /* ---------- 顶部栏 ---------- */
 .nav-bar {
   display: flex;
@@ -273,6 +287,7 @@ function saveImage(url) {
   padding: 0 32rpx;
 }
 
+.cover { position: relative; }
 .cover-img { width: 100%; height: 100%; }
 .cover-ph {
   width: 100%; height: 100%;
@@ -280,6 +295,27 @@ function saveImage(url) {
   background: var(--paper-bg-soft);
 }
 .cover-ph.back-ph { background: linear-gradient(180deg, #FDFAF4 0%, #F4EAD9 100%); }
+
+/* ---------- 背面书法留言层 ---------- */
+.back-note {
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12rpx;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.back-note-text {
+  font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', '楷体', serif;
+  font-size: 34rpx;
+  line-height: 1.6;
+  color: #4a3b2f;
+  text-align: center;
+  word-break: break-all;
+  text-shadow: 0 1rpx 0 rgba(255,255,255,0.6);
+}
 
 .detail-grid {
   display: grid;

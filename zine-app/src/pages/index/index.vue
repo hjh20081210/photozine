@@ -108,10 +108,10 @@
 
       <!-- 3. 类型 + 比例 chip -->
       <view class="quick-line">
-        <view class="chip" :class="{ on: mode === 'POSTCARD' }" @click="mode = 'POSTCARD'">
+        <view class="chip" :class="{ on: mode === 'POSTCARD' }" @click="switchMode('POSTCARD')">
           <text class="chip-label">明信片</text>
         </view>
-        <view class="chip" :class="{ on: mode === 'POSTER' }" @click="mode = 'POSTER'">
+        <view class="chip" :class="{ on: mode === 'POSTER' }" @click="switchMode('POSTER')">
           <text class="chip-label">极简海报</text>
         </view>
         <view class="chip-divider" />
@@ -476,7 +476,7 @@
 import { ref, computed, onMounted } from 'vue'
 import store from '@/store/index.js'
 import { request } from '@/utils/request.js'
-import { STYLES, RATIOS, SIDES_OPTIONS, PAPER_TEXTURES } from '@/utils/constants.js'
+import { STYLES, POSTCARD_RATIOS, POSTER_RATIOS, RATIOS, SIDES_OPTIONS, PAPER_TEXTURES } from '@/utils/constants.js'
 import SegmentedControl from '@/components/SegmentedControl.vue'
 import StylePicker from '@/components/StylePicker.vue'
 import AppTabbar from '@/components/AppTabbar.vue'
@@ -485,7 +485,7 @@ import ImageCropper from '@/components/ImageCropper.vue'
 const photo = ref(null)
 const mode = ref('POSTCARD')
 const sides = ref('FRONT_BACK')
-const ratio = ref({ w: 2, h: 3 })
+const ratio = ref({ w: 3, h: 2 })
 const useCustomRatio = ref(false)
 const customRatio = ref({ w: '2', h: '3' })
 const style = ref('hand_drawn_watercolor')
@@ -504,7 +504,8 @@ const generating = ref(false)
 const genStatus = ref('')
 const genStep = ref(0)
 const styles = ref(STYLES)
-const ratios = ref(RATIOS)
+// 根据模式动态选择比例组：明信片=横长（宽>高），海报=竖版（宽<高）
+const ratios = computed(() => mode.value === 'POSTER' ? POSTER_RATIOS : POSTCARD_RATIOS)
 
 // 隐私弹窗状态
 const agreeChecked = ref(false)
@@ -878,6 +879,16 @@ function pickRatio(r) {
   useCustomRatio.value = false
   ratio.value = { w: r.w, h: r.h }
 }
+
+// 切换模式时，自动切换到该模式的首选比例
+function switchMode(m) {
+  mode.value = m
+  useCustomRatio.value = false
+  const list = m === 'POSTER' ? POSTER_RATIOS : POSTCARD_RATIOS
+  if (list && list.length) {
+    ratio.value = { w: list[0].w, h: list[0].h }
+  }
+}
 function toggleCustomRatio() { useCustomRatio.value = !useCustomRatio.value }
 function applyCustomRatio() {
   const w = parseInt(customRatio.value.w, 10)
@@ -973,6 +984,7 @@ async function onGenerate() {
       title: title.value,
       location: location.value,
       date: date.value,
+      backMessage: backMessage.value || null,
     }
     setTimeout(() => uni.navigateTo({ url: '/pages/result/result' }), 500)
   } catch (e) {

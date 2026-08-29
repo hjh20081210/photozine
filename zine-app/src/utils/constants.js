@@ -50,15 +50,25 @@ export const PAPER_TEXTURES = [
   { key: 'japanese_tape',  name: '和纸胶带', desc: '细纤维，温润半透' },
 ]
 
-export const RATIOS = [
-  { w: 2, h: 3, name: '2:3 明信片' },
-  { w: 3, h: 5, name: '3:5 海报' },
-  { w: 3, h: 4, name: '3:4' },
-  { w: 1, h: 1, name: '1:1' },
-  { w: 9, h: 16, name: '9:16' },
-  { w: 4, h: 3, name: '4:3' },
-  { w: 16, h: 9, name: '16:9' },
+// 明信片：横长比例（宽 > 高）
+export const POSTCARD_RATIOS = [
+  { w: 3, h: 2, name: '3:2 明信片' },
+  { w: 4, h: 3, name: '4:3 明信片' },
+  { w: 5, h: 3, name: '5:3 明信片' },
+  { w: 16, h: 9, name: '16:9 明信片' },
+  { w: 1, h: 1, name: '1:1 明信片' },
 ]
+
+// 海报：竖版比例（宽 < 高）
+export const POSTER_RATIOS = [
+  { w: 2, h: 3, name: '2:3 海报' },
+  { w: 3, h: 4, name: '3:4 海报' },
+  { w: 3, h: 5, name: '3:5 海报' },
+  { w: 9, h: 16, name: '9:16 海报' },
+]
+
+// 兼容旧引用
+export const RATIOS = POSTCARD_RATIOS
 
 export const PROVIDERS = [
   {
