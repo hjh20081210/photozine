@@ -40,11 +40,11 @@
             <text class="badge">正</text>
           </view>
 
-          <!-- 背面卡片：正反面模式下才展示（前端精确渲染标准明信片背面） -->
+          <!-- 背面卡片：正反面模式下才展示。优先展示后端 sharp 合成的完整背面图（邮编/邮票/左线稿/留言上/地址下），无合成图时回退 DOM 渲染 -->
           <view v-if="preview.sides === 'FRONT_BACK'" class="zine-card" @click="openPreviewImg">
             <view class="cover">
-              <!-- 标准中式明信片背面：左上邮编框 + 右上邮票 + 右栏(留言在上/地址在下) -->
-              <view class="postcard-back">
+              <image v-if="preview.backUrl" :src="full(preview.backUrl)" mode="aspectFit" class="cover-img" />
+              <view v-else class="postcard-back">
                 <view class="pb-top">
                   <view class="pb-zip">
                     <view v-for="i in 6" :key="i" class="pb-zip-box"></view>
@@ -56,7 +56,6 @@
                 <view class="pb-body">
                   <view class="pb-divider"></view>
                   <view class="pb-mail">
-                    <!-- 留言区：多排横线，留言从第一排空两格开始书写 -->
                     <view v-for="i in 5" :key="'m'+i" class="pb-mail-line">
                       <text v-if="i === 1" class="pb-mail-text">{{ '　　' + (backMessageText || '') }}</text>
                     </view>
