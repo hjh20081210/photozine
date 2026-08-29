@@ -246,12 +246,13 @@ function saveImage(url) {
     uni.showToast({ title: '没有可保存的图片', icon: 'none' })
     return
   }
-  const fullUrl = store.fullUrl(url)
+  // 图片为对象存储 presigned URL（跨域），直接 fetch 会被 CORS 拦截。
+  // 统一通过后端同源代理 /api/file/proxy 拉取，规避跨域无法保存的问题。
+  const proxyUrl = store.fullUrl('/api/file/proxy?url=' + encodeURIComponent(url))
   // #ifdef H5
-  // 跨域签名 URL 的 <a download> 会被浏览器忽略，必须 fetch + blob
-  if (!fullUrl) { uni.showToast({ title: '没有可保存的图片', icon: 'none' }); return }
+  if (!proxyUrl) { uni.showToast({ title: '没有可保存的图片', icon: 'none' }); return }
   uni.showLoading({ title: '下载中…' })
-  fetch(fullUrl)
+  fetch(proxyUrl)
     .then((res) => {
       if (!res.ok) throw new Error('HTTP ' + res.status)
       return res.blob()
@@ -272,14 +273,14 @@ function saveImage(url) {
       uni.hideLoading()
       console.error('下载失败，尝试降级打开', e)
       // 降级方案：跨域签名 URL 可能被 CORS 拦截，直接新开标签让用户长按/右键保存
-      window.open(fullUrl, '_blank')
+      window.open(proxyUrl, '_blank')
       uni.showToast({ title: '已打开大图，可长按保存', icon: 'none' })
     })
   // #endif
   // #ifndef H5
   uni.showLoading({ title: '保存中…' })
   uni.downloadFile({
-    url: fullUrl,
+    url: proxyUrl,
     success: (r) => {
       if (r.statusCode !== 200) {
         uni.hideLoading()

@@ -36,11 +36,10 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue'])
 
-// 参考图一致：4种纸纹风格 key 映射到 4 个色板 class
+// 参考图一致：纸纹风格 key 映射到 4 个色板 class（已按要求移除“纯黑”）
 const paper4 = [
   { key: 'hand_drawn_watercolor', cls: 'sw-paper-1', label: '网格' },
   { key: 'minimal_woodblock',    cls: 'sw-paper-2', label: '斜纹' },
-  { key: 'retro_risograph',     cls: 'sw-paper-3', label: '纯黑' },
   { key: 'film_polaroid',       cls: 'sw-paper-4', label: '橙棕' },
 ]
 

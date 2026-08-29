@@ -78,7 +78,7 @@ async function submit() {
     if (res.code === 200) {
       store.login(res.data);
       uni.showToast({ title: mode.value === 'login' ? '欢迎回来' : '注册成功', icon: 'success' });
-      setTimeout(() => uni.navigateBack(), 600);
+      setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 600);
     } else {
       msg.value = res.msg || '操作失败';
     }
@@ -98,7 +98,7 @@ async function githubLogin() {
     if (res.code === 200) {
       store.login(res.data);
       uni.showToast({ title: 'GitHub 快捷登录成功', icon: 'success' });
-      setTimeout(() => uni.navigateBack(), 600);
+      setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 600);
     } else {
       msg.value = res.msg || '登录失败';
     }

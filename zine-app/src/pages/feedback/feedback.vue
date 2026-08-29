@@ -1,9 +1,15 @@
 <template>
   <view class="fb-page">
+    <view class="nav">
+      <view class="nav-back" @tap="goBack">
+        <text class="nav-back-icon">‹</text>
+        <text>返回</text>
+      </view>
+    </view>
     <view class="paper">
       <view class="head">
         <text class="head-title">意见反馈</text>
-        <text class="head-sub">你的声音会被送达管理员 @何佳壕</text>
+        <text class="head-sub">你的声音会被送达管理员</text>
       </view>
 
       <view class="form">
@@ -36,6 +42,10 @@ const contact = ref('');
 const loading = ref(false);
 const msg = ref('');
 const ok = ref(false);
+
+function goBack() {
+  uni.navigateBack({ delta: 1, fail: () => uni.reLaunch({ url: '/pages/index/index' }) });
+}
 
 async function submit() {
   if (!content.value.trim()) {
@@ -71,6 +81,14 @@ async function submit() {
   padding: 96rpx 48rpx;
   box-sizing: border-box;
 }
+.nav { margin-bottom: 32rpx; }
+.nav-back {
+  display: inline-flex; align-items: center; gap: 6rpx;
+  padding: 12rpx 28rpx; border-radius: 999rpx;
+  background: rgba(44,36,30,0.06); color: #2C241E;
+  font-size: 26rpx;
+}
+.nav-back-icon { font-size: 40rpx; line-height: 1; margin-top: -4rpx; }
 .paper {
   background: #FFFDF8; border-radius: 24rpx; padding: 56rpx;
   box-shadow: 0 12rpx 40rpx rgba(44, 36, 30, 0.08);

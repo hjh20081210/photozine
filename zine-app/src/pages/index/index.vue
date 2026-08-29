@@ -809,7 +809,7 @@ function onCropConfirm(e) {
         if (data.code === 200) {
           const fullUrl = store.serverUrl + data.data.url
           photo.value = { ...(photo.value || {}), url: fullUrl }
-          uni.showToast({ title: '上传成功', icon: 'success' })
+          uni.showToast({ title: '上传成功', icon: 'success', duration: 600 })
         } else {
           console.warn('上传失败', data.msg)
         }
