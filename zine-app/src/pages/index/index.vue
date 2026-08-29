@@ -910,9 +910,11 @@ async function onGenerate() {
   genStatus.value = '正在提交…'
   genStep.value = 0
   try {
+    // 注意：当前版本暂不支持图生图，上传的照片用于记录和展示
+    // 生成时使用文本描述，不传图片 URL
     const data = {
-      imageBase64: photo.value ? photo.value.base64 : null,
-      imageMime: photo.value ? photo.value.mime : null,
+      // imageUrl: photo.value ? photo.value.url : null,  // 暂时禁用
+      // creativeMode: 'handdraw',  // 暂时禁用
       mode: mode.value,
       sides: sides.value,
       ratio: { width: ratio.value.w, height: ratio.value.h },

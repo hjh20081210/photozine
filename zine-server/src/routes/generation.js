@@ -1,7 +1,22 @@
 import { Router } from 'express';
-import { ImageGenerationClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { ImageGenerationClient, Config, HeaderUtils, S3Storage } from 'coze-coding-dev-sdk';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = Router();
+
+// 初始化对象存储客户端
+const storage = new S3Storage({
+  endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+  accessKey: '',
+  secretKey: '',
+  bucketName: process.env.COZE_BUCKET_NAME,
+  region: 'cn-beijing',
+});
 
 // 风格对应的提示词模板
 const STYLE_PROMPTS = {
@@ -62,6 +77,50 @@ function buildPrompt(body) {
   return basePrompt.replace(/\s+/g, ' ').trim();
 }
 
+// 处理图片 URL：如果是本地路径，上传到对象存储并返回签名 URL
+async function processImageUrl(imageUrl) {
+  if (!imageUrl) return null;
+  
+  // 如果是相对路径（/upload/xxx.jpg），上传到对象存储
+  if (imageUrl.startsWith('/upload/')) {
+    const uploadDir = process.env.UPLOAD_DIR || '/tmp/zine-upload';
+    const filename = imageUrl.replace('/upload/', '');
+    const filePath = path.join(uploadDir, filename);
+    
+    try {
+      if (fs.existsSync(filePath)) {
+        // 读取文件
+        const fileBuffer = fs.readFileSync(filePath);
+        const ext = path.extname(filename).toLowerCase();
+        const contentType = ext === '.png' ? 'image/png' : 'image/jpeg';
+        
+        // 上传到对象存储
+        console.log('[processImageUrl] uploading to storage:', filename);
+        const fileKey = await storage.uploadFile({
+          fileContent: fileBuffer,
+          fileName: `zine-images/${filename}`,
+          contentType,
+        });
+        
+        // 生成签名 URL（有效期 1 天）
+        const signedUrl = await storage.generatePresignedUrl({
+          key: fileKey,
+          expireTime: 86400,
+        });
+        
+        console.log('[processImageUrl] uploaded, url:', signedUrl.substring(0, 80) + '...');
+        return signedUrl;
+      }
+    } catch (err) {
+      console.error('[processImageUrl] upload error:', err.message);
+      return null;
+    }
+  }
+  
+  // 如果是完整 URL，直接返回
+  return imageUrl;
+}
+
 // 同步生成接口
 router.post('/', async (req, res) => {
   try {
@@ -89,10 +148,15 @@ router.post('/', async (req, res) => {
       responseFormat: 'url',
     };
 
-    // 图生图模式
-    if (body.imageUrl && body.creativeMode && body.creativeMode !== 'original') {
-      generateReq.image = body.imageUrl;
-    }
+    // 图生图模式：暂时禁用，因为 Seedream 4.5 可能不支持
+    // TODO: 确认模型支持后再开启
+    // if (body.imageUrl && body.creativeMode && body.creativeMode !== 'original') {
+    //   const processedImageUrl = await processImageUrl(body.imageUrl);
+    //   if (processedImageUrl) {
+    //     generateReq.image = processedImageUrl;
+    //     console.log('[Generation] image mode:', body.creativeMode, 'url type:', processedImageUrl.startsWith('data:') ? 'base64' : 'url');
+    //   }
+    // }
 
     console.log('[Generation] start, model:', model, 'size:', size);
     console.log('[Generation] prompt:', prompt.substring(0, 100));
