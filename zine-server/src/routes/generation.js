@@ -77,27 +77,24 @@ function buildPrompt(body) {
   const locationText = location ? `地点标识 "${location}"` : '';
   const isDouble = mode === 'POSTCARD' && sides === 'FRONT_BACK';
 
+  // 是否有参考照片（图生图）：核心是按参考 skill 保留照片主体，做成「照片转明信片」
+  const hasPhoto = !!imageUrl;
+  const photoWrap = hasPhoto
+    ? `以参考照片为主体：完整保留照片的实景画面、构图与色彩作为明信片主体画面，仅在其上叠加明信片元素（纸张纹理边框、邮票区、标题与日期的手写排版），不要改变照片本身的内容与主体`
+    : `根据文字描述创作画面`;
+
   let basePrompt = '';
   if (mode === 'POSTCARD') {
     if (isDouble) {
       // 双面：竖向二分构图，上半正面、下半反面，一次成图后代码裁剪
       const backNote = backMessage ? `，反面中央用毛笔毛笔手写书法字迹、仿人手书写的行楷书写留言文字 "${String(backMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，字迹自然连贯、避免机器印刷字体` : '';
-      basePrompt = `一张竖向二分构图的明信片双面设计，${stylePrompt}，${titleText} ${locationText}。上方为明信片正面，下方为明信片反面${backNote}，上下两部分对称、宽度相同，中间有一条清晰的水平分割线，整体为一张完整的竖向长图`;
+      basePrompt = `一张竖向二分构图的明信片双面设计。上方为明信片正面：${photoWrap}，${stylePrompt}，${titleText} ${locationText}；下方为明信片反面${backNote}。上下两部分对称、宽度相同，中间有一条清晰的水平分割线，整体为一张完整的竖向长图`;
     } else {
-      const frontNote = frontMessage ? `，画面中加入手写书法字迹的简短标语 "${String(frontMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，仿人手挥毫书写、字迹自然` : '';
-      basePrompt = `一张精美的明信片正面，${stylePrompt}，${titleText} ${locationText}${frontNote}，构图优雅，艺术感强，高清细节`;
+      const frontNote = frontMessage ? `，画面角落加入一处手写书法字迹的简短标语 "${String(frontMessage).replace(/"/g, '“').replace(/\n/g, ' ')}"，仿人手挥毫书写、字迹自然` : '';
+      basePrompt = `一张精美的明信片正面：${photoWrap}，${stylePrompt}，${titleText} ${locationText}${frontNote}，构图优雅，高清细节`;
     }
   } else {
-    basePrompt = `一张极简海报，${stylePrompt}，${titleText} ${locationText}，大面积留白，简约设计感，高级`;
-  }
-
-  // 如果有参考图（图生图），加入风格转换描述
-  if (imageUrl && creativeMode && creativeMode !== 'original') {
-    if (creativeMode === 'handdraw' || creativeMode === 'hand_draw_2') {
-      basePrompt += `，将参考图中的内容重新手绘成 ${stylePrompt} 风格，保留主体意境`;
-    } else if (creativeMode === 'tricolor' || creativeMode === 'tri_sample') {
-      basePrompt += `，将参考图内容抽象为三色块风格，保留构图和主体轮廓`;
-    }
+    basePrompt = `一张极简海报，${photoWrap}，${stylePrompt}，${titleText} ${locationText}，大面积留白，简约设计感，高级`;
   }
 
   return basePrompt.replace(/\s+/g, ' ').trim();
@@ -165,13 +162,13 @@ router.post('/', async (req, res) => {
       responseFormat: isDouble ? 'b64_json' : 'url',
     };
 
-    // 图生图模式：Seedream 4.5 支持图生图
-    if (body.imageUrl && body.creativeMode && body.creativeMode !== 'original') {
+    // 图生图模式：有参考照片就必须传给模型（Seedream 4.5 支持），让照片成为明信片主体
+    if (body.imageUrl) {
       try {
         const processedImageUrl = await processImageUrl(body.imageUrl);
         if (processedImageUrl) {
           generateReq.image = processedImageUrl;
-          console.log('[Generation] image mode:', body.creativeMode, 'url type:', processedImageUrl.startsWith('data:') ? 'base64' : 'url');
+          console.log('[Generation] image mode:', body.creativeMode || 'photo', 'url type:', processedImageUrl.startsWith('data:') ? 'base64' : 'url');
         }
       } catch (imgErr) {
         console.error('[Generation] image process error:', imgErr.message);

@@ -20,12 +20,12 @@
 
     <scroll-view scroll-y class="body" :style="{ paddingBottom: bodyPad }">
       <template v-if="preview">
-        <!-- 4格 2x2 预览网格 与参考图一致 -->
-        <view class="detail-grid">
-          <!-- 卡1：正面 -->
-          <view class="zine-card">
+        <!-- 一排一个卡片：按实际正反面数量动态渲染（单面1张、双面2张） -->
+        <view class="detail-list">
+          <!-- 正面卡片 -->
+          <view class="zine-card" @click="openPreview(full(preview.frontUrl))">
             <view class="cover">
-              <image v-if="preview.frontUrl" :src="full(preview.frontUrl)" mode="aspectFill" class="cover-img" />
+              <image v-if="preview.frontUrl" :src="full(preview.frontUrl)" mode="aspectFit" class="cover-img" />
               <view v-else class="cover-ph">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#C8B9A8" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2" /></svg>
               </view>
@@ -39,15 +39,13 @@
             </view>
             <text class="badge">正</text>
           </view>
-          <!-- 卡2：背面 -->
-          <view class="zine-card">
+
+          <!-- 背面卡片：正反面模式下才展示 -->
+          <view v-if="preview.sides === 'FRONT_BACK'" class="zine-card" @click="openPreview(full(preview.backUrl))">
             <view class="cover">
-              <image v-if="preview.backUrl" :src="full(preview.backUrl)" mode="aspectFill" class="cover-img" />
+              <image v-if="preview.backUrl" :src="full(preview.backUrl)" mode="aspectFit" class="cover-img" />
               <view v-else class="cover-ph back-ph">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#C8B9A8" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h10M7 12h10M7 15h6" /></svg>
-              </view>
-              <view v-if="preview.backMessage" class="back-note">
-                <text class="back-note-text">{{ preview.backMessage }}</text>
               </view>
             </view>
             <view class="foot">
@@ -55,39 +53,6 @@
               <view class="meta">
                 <text class="date">{{ sidesText }}</text>
                 <text class="size">{{ styleText }}</text>
-              </view>
-            </view>
-            <text class="badge">背</text>
-          </view>
-          <!-- 卡3：正面 再次展示（参考图4格结构） -->
-          <view class="zine-card">
-            <view class="cover">
-              <image v-if="preview.frontUrl" :src="full(preview.frontUrl)" mode="aspectFill" class="cover-img" />
-              <view v-else class="cover-ph" />
-            </view>
-            <view class="foot">
-              <text class="title">{{ preview.title || '作品2' }}</text>
-              <view class="meta">
-                <text class="date">{{ formatTime() }}</text>
-                <text class="size">{{ ratioText }}</text>
-              </view>
-            </view>
-            <text class="badge">正</text>
-          </view>
-          <!-- 卡4：背面 再次展示 -->
-          <view class="zine-card">
-            <view class="cover">
-              <image v-if="preview.backUrl" :src="full(preview.backUrl)" mode="aspectFill" class="cover-img" />
-              <view v-else-if="preview.frontUrl" class="cover-ph">
-                <image :src="full(preview.frontUrl)" mode="aspectFill" class="cover-img" />
-              </view>
-              <view v-else class="cover-ph" />
-            </view>
-            <view class="foot">
-              <text class="title">{{ preview.location || '作品4' }}</text>
-              <view class="meta">
-                <text class="date">{{ formatTime() }}</text>
-                <text class="size">{{ ratioText }}</text>
               </view>
             </view>
             <text class="badge">背</text>
@@ -118,6 +83,17 @@
         </view>
       </view>
     </view>
+
+    <!-- 放大预览弹层：点击卡片时展示大图，可缩放/关闭/保存 -->
+    <view v-if="previewImg" class="preview-mask" @click="previewImg = ''">
+      <view class="preview-stage" @click.stop>
+        <image :src="previewImg" mode="aspectFit" class="preview-img" />
+        <view class="preview-actions">
+          <view class="preview-btn" @click="saveSingle(previewImg)"><text>保存</text></view>
+          <view class="preview-btn preview-close" @click="previewImg = ''"><text>关闭</text></view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -126,6 +102,21 @@ import { ref, computed } from 'vue'
 import store from '@/store/index.js'
 
 const preview = store.preview
+
+// 放大预览
+const previewImg = ref('')
+function openPreview(url) {
+  previewImg.value = url || ''
+}
+function closePreview() {
+  previewImg.value = ''
+}
+
+function saveSingle() {
+  if (previewImg.value) {
+    saveImage(previewImg.value)
+  }
+}
 
 const headerPad = computed(() => {
   // #ifdef H5
@@ -153,6 +144,38 @@ const sidesText = computed(() => {
 })
 
 function full(u) { return store.fullUrl(u) }
+
+// fetch + blob 下载（兼容跨域签名 URL，不用 <a download>）
+function downloadBlob(url, filename) {
+  return fetch(url)
+    .then(r => { if (!r.ok) throw new Error('下载失败'); return r.blob() })
+    .then(blob => {
+      // #ifdef H5
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
+      // #endif
+      // #ifndef H5
+      const fs = uni.getFileSystemManager()
+      const t = '/tmp/zine_' + Date.now() + '.jpg'
+      const fr = new FileReader()
+      fr.onload = () => {
+        fs.writeFile({ filePath: t, data: fr.result, encoding: 'base64', success: () => {
+          uni.saveImageToPhotosAlbum({ filePath: t, success: () => uni.showToast({ title: '已保存', icon: 'success' }), fail: () => uni.showToast({ title: '保存失败', icon: 'none' }) })
+        }})
+      }
+      fr.readAsDataURL(blob)
+      // #endif
+    })
+    .catch(err => {
+      console.warn('download error', err)
+      uni.showToast({ title: '保存失败', icon: 'none' })
+    })
+}
 
 function formatTime() {
   const d = new Date()
@@ -197,13 +220,33 @@ function saveImage(url) {
   }
   const fullUrl = store.fullUrl(url)
   // #ifdef H5
-  const a = document.createElement('a')
-  a.href = fullUrl
-  a.download = 'zine-' + Date.now() + '.png'
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  uni.showToast({ title: '已开始下载', icon: 'none' })
+  // 跨域签名 URL 的 <a download> 会被浏览器忽略，必须 fetch + blob
+  if (!fullUrl) { uni.showToast({ title: '没有可保存的图片', icon: 'none' }); return }
+  uni.showLoading({ title: '下载中…' })
+  fetch(fullUrl)
+    .then((res) => {
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      return res.blob()
+    })
+    .then((blob) => {
+      uni.hideLoading()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = 'zine-' + Date.now() + '.png'
+      document.body.appendChild(link)
+      link.click()
+      window.URL.revokeObjectURL(blobUrl)
+      link.remove()
+      uni.showToast({ title: '已开始下载', icon: 'none' })
+    })
+    .catch((e) => {
+      uni.hideLoading()
+      console.error('下载失败，尝试降级打开', e)
+      // 降级方案：跨域签名 URL 可能被 CORS 拦截，直接新开标签让用户长按/右键保存
+      window.open(fullUrl, '_blank')
+      uni.showToast({ title: '已打开大图，可长按保存', icon: 'none' })
+    })
   // #endif
   // #ifndef H5
   uni.showLoading({ title: '保存中…' })
@@ -234,6 +277,7 @@ function saveImage(url) {
   })
   // #endif
 }
+
 </script>
 
 <style lang="scss" scoped>
