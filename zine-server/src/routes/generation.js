@@ -817,11 +817,26 @@ router.post('/', async (req, res) => {
 
     // ---- 1) 正面：生成插画素材 ----
     // chat 类模型（入梦 Pro）走 AI 生成（支持图生图）
-    // image 类模型（gpt-image-2）走 modelGenerate
+    // 正面：使用 sharp 风格化处理原图（保证忠实原图）
     const isChatModel = freeModel && freeModel.kind === 'chat';
     const [frontArtBuf, extractedBackLine] = await Promise.all([
       (async () => {
-        // chat 模型：走 AI 生成（入梦 Pro 支持图生图）
+        // 下载原图并用 sharp 风格化处理（保证忠实原图）
+        if (body.imageUrl) {
+          try {
+            const imgData = await processImageUrl(body.imageUrl);
+            if (imgData) {
+              const imgBuf = Buffer.from(imgData.split(',')[1], 'base64');
+              const [w, h] = `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`.split('x').map(Number);
+              const style = body.style || 'hand_drawn_watercolor';
+              const paperTexture = body.paperTexture || 'watercolor_paper';
+              return await applyArtStyle(imgBuf, style, paperTexture, w, h);
+            }
+          } catch (e) {
+            console.warn('[Generation] sharp style failed, fallback AI:', e.message);
+          }
+        }
+        // 兜底：走 AI 生成
         if (isChatModel) {
           const freeModelMap = getFreeModelMap();
           const fm = freeModelMap[body.provider?.modelKey || body.provider?.model];
@@ -830,7 +845,6 @@ router.post('/', async (req, res) => {
             return await generateViaOpenAI(fm, buildFrontArtPrompt(body), [w, h], body.imageUrl);
           }
         }
-        // image 模型 或 无免费模型：走 AI 生成
         return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
       })(),
       (async () => {
