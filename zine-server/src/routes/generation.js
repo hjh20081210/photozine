@@ -186,11 +186,11 @@ function buildBackLinePrompt(body) {
 
 // 生成正面右侧插画（AI），基于原片创作主体插画，无文字
 function buildFrontArtPrompt(body) {
-  const { style, title, location, date } = body;
+  const { style, title, location, date, paperTexture } = body;
   const stylePrompt = STYLE_PROMPTS[style] || STYLE_FALLBACK;
-  const titleText = title ? `主题为 "${esc(String(title).replace(/\n/g, ' '))}"` : '';
-  return `根据参考照片创作一幅克制的手绘插画：严格忠实参考照片的构图、视角、主体、远近与色彩关系，将照片中最具视觉吸引力、最能代表画面气质的单一主景物（必须是照片里真实存在的那一个主体景物，按其真实形态与细节刻画）转化为${stylePrompt}。插画与原片主体高度相似、可辨认，只是转换为插画质感。画面带不规则水彩淡墨晕染毛边，颜料扩散斑驳水痕，半透明水彩质感，同色系柔和低饱和，边缘留白。${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`
-    .replace(/\s+/g, ' ').trim();
+  const textureMap = { linen: '亚麻纸纹', kraft: '牛皮纸纹', watercolor: '水彩纸纹', rice: '宣纸纹', craft: '手工纸纹' };
+  const textureText = paperTexture && paperTexture !== 'none' ? `纸张纹理为${textureMap[paperTexture] || paperTexture}，画面带有该纸张的质感与底色。` : '';
+  return `根据参考照片创作插画。保留原图的构图、视角、主体、色彩与明暗。转化为${stylePrompt}，生动自然不死板。${textureText}直接返回完整SVG代码（以<svg>开头），不要HTML、CSS或markdown。画面中不要出现任何文字、字母、数字或符号。`.replace(/\s+/g, ' ').trim();
 }
 
 // 正面合成：左侧文字信息栏（DOM 精确排版）+ 右侧插画
@@ -245,8 +245,16 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
     <line x1="${pad}" y1="${lineY}" x2="${leftW - pad}" y2="${lineY}" stroke="${labelColor}" stroke-width="1"/>`;
   }
 
-  const titleLines = wrapLines(titleText, 9).slice(0, 3);
-  const titleFontSize = Math.round(leftW * 0.085);
+  // 根据标题字数动态调整每行最大字符数
+  const titleCharCount = titleText.length;
+  const maxCharsPerLine = titleCharCount <= 4 ? 6 : titleCharCount <= 8 ? 8 : 10;
+  const titleLines = wrapLines(titleText, maxCharsPerLine).slice(0, 3);
+  // 标题字号根据字数自适应：字少则大，字多则小
+  let titleFontSize = Math.round(leftW * 0.085);
+  if (titleCharCount <= 2) titleFontSize = Math.round(leftW * 0.13);
+  else if (titleCharCount <= 4) titleFontSize = Math.round(leftW * 0.10);
+  else if (titleCharCount <= 7) titleFontSize = Math.round(leftW * 0.08);
+  else titleFontSize = Math.round(leftW * 0.065);
   // 标题起始位置：001 线下方留白
   let titleSvg = '';
   let ty = Math.round(canvasH * 0.28);
@@ -617,17 +625,17 @@ async function extractLineArtFromImage(imgBuf) {
     const W = 900;
     const H = Math.max(1, Math.round((meta.height || 900) * W / (meta.width || 1200)));
     // 1) 灰度（轻模糊，保留主体轮廓，弱化噪点）
-    const gray = await sharp(imgBuf).resize(W, H, { fit: 'fill' }).grayscale().blur(0.7).toBuffer();
+    const gray = await sharp(imgBuf).resize(W, H, { fit: 'fill' }).grayscale().blur(0.3).toBuffer();
     // 2) 边缘检测（Sobel 组合）
     const horiz = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, 0, 1, -2, 0, 2, -1, 0, 1] }).normalise().toBuffer();
     const vert = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, -2, -1, 0, 0, 0, 1, 2, 1] }).normalise().toBuffer();
     // 3) 边缘强度相加 + 归一化
     const edges = await sharp(horiz).composite([{ input: vert, blend: 'add' }]).normalise().toBuffer();
-    // 4) 自适应分位数阈值：保留约 55% 较强边缘作为线稿骨架（线条丰富、有造型）
+    // 4) 自适应分位数阈值：保留约 35% 较强边缘作为线稿骨架（清晰、有造型、不糊）
     const { data } = await sharp(edges).greyscale().raw().toBuffer({ resolveWithObject: true });
     const arr = Array.from(data).sort((a, b) => a - b);
     const N = arr.length;
-    const thr = arr[Math.max(0, Math.floor(N * 0.45))];
+    const thr = arr[Math.max(0, Math.floor(N * 0.65))];
     // 5) 构造透明背景纯黑线稿：高于阈值的边缘 -> 纯黑不透明线条（保证合成缩放后依然深色），其余全透明
     const out = Buffer.alloc(N * 4);
     for (let i = 0; i < N; i++) {
@@ -641,7 +649,7 @@ async function extractLineArtFromImage(imgBuf) {
     }
     return await sharp(out, { raw: { width: W, height: H, channels: 4 } })
       // 膨胀让线条更连贯、更粗、更有造型（避免断点和过细）
-      .dilate(2)
+      .dilate(1)
       .png().toBuffer();
   } catch (e) {
     console.warn('[extractLineArtFromImage] failed:', e.message);
