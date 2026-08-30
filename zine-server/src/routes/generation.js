@@ -191,7 +191,7 @@ function buildFrontArtPrompt(body) {
   const textureMap = { linen: '亚麻纸纹', kraft: '牛皮纸纹', watercolor: '水彩纸纹', rice: '宣纸纹', craft: '手工纸纹' };
   const textureText = paperTexture && paperTexture !== 'none' ? `纸张纹理为${textureMap[paperTexture] || paperTexture}，画面带有该纸张的质感与底色。` : '';
   const titleText = title ? `主题为 "${esc(String(title).replace(/\n/g, ' '))}"` : '';
-  return `仔细观察参考照片，创作一幅插画：必须严格保留原照片的构图、视角、主体位置、远近层次和色彩关系。将照片中的主景物（如帆船、森林木屋、海边、山峰、马匹等）转化为${stylePrompt}。插画必须与原片场景高度一致、可辨认，不能凭空创作不存在的元素，不能改变原片的构图布局。画面带不规则水彩淡墨晕染毛边，颜料扩散斑驳水痕，半透明水彩质感，同色系柔和低饱和，边缘留白。${textureText}${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`.replace(/\s+/g, ' ').trim();
+  return `参考照片中的场景，创作一幅${stylePrompt}插画。关键要求：1）完全复制原照片的构图、视角、主体位置、大小比例、远近层次，确保观者能一眼认出是同一个场景；2）主体景物（如帆船、建筑、人物、山水等）的形状、数量、位置必须与原片一致；3）将照片场景转化为${stylePrompt}，具有明显的艺术笔触、颜料质感和纸张纹理；4）画面带不规则淡墨晕染毛边，颜料扩散斑驳水痕，半透明质感，同色系柔和低饱和，边缘留白。${textureText}${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`.replace(/\s+/g, ' ').trim();
 }
 
 // 正面合成：左侧文字信息栏（DOM 精确排版）+ 右侧插画
@@ -469,7 +469,7 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   if (imageUrl) {
     try {
       if (kind === 'chat') {
-        // chat 类模型：用 sharp 压缩图片到 400x533（3:4比例），加速模型处理
+        // chat 类模型：用 sharp 压缩图片到 600x800（3:4比例），给模型足够细节
         const sharp = (await import('sharp')).default;
         const fs = (await import('fs')).default;
         const path = (await import('path')).default;
@@ -477,11 +477,11 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
         let imgBuf;
         if (isLocalPath) {
           const filePath = path.join('/tmp/zine-upload', path.basename(imageUrl));
-          imgBuf = await sharp(filePath).resize(320, 427, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 60 }).toBuffer();
+          imgBuf = await sharp(filePath).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 70 }).toBuffer();
         } else {
           const raw = await fetch(imageUrl);
           const ab = await raw.arrayBuffer();
-          imgBuf = await sharp(Buffer.from(ab)).resize(320, 427, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 60 }).toBuffer();
+          imgBuf = await sharp(Buffer.from(ab)).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 70 }).toBuffer();
         }
         inputData = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
       } else {
@@ -817,26 +817,10 @@ router.post('/', async (req, res) => {
 
     // ---- 1) 正面：生成插画素材 ----
     // chat 类模型（入梦 Pro）走 AI 生成（支持图生图）
-    // 正面：使用 sharp 风格化处理原图（保证忠实原图）
+    // 正面：AI 生成艺术风格画作（忠实原图构图 + 油画/水彩风格）
     const isChatModel = freeModel && freeModel.kind === 'chat';
     const [frontArtBuf, extractedBackLine] = await Promise.all([
       (async () => {
-        // 下载原图并用 sharp 风格化处理（保证忠实原图）
-        if (body.imageUrl) {
-          try {
-            const imgData = await processImageUrl(body.imageUrl);
-            if (imgData) {
-              const imgBuf = Buffer.from(imgData.split(',')[1], 'base64');
-              const [w, h] = `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`.split('x').map(Number);
-              const style = body.style || 'hand_drawn_watercolor';
-              const paperTexture = body.paperTexture || 'watercolor_paper';
-              return await applyArtStyle(imgBuf, style, paperTexture, w, h);
-            }
-          } catch (e) {
-            console.warn('[Generation] sharp style failed, fallback AI:', e.message);
-          }
-        }
-        // 兜底：走 AI 生成
         if (isChatModel) {
           const freeModelMap = getFreeModelMap();
           const fm = freeModelMap[body.provider?.modelKey || body.provider?.model];
