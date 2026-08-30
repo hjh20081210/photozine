@@ -56,8 +56,12 @@ const STYLE_FALLBACK = '手绘水彩插画风格，透明水彩晕染，水痕�
 // 默认模型
 // 默认免费生图模型（OpenAI 兼容 chat/completions），密钥存后端，不暴露给前端。
 // 默认为用户在「免费模型」里选的第一个（gpt-image-2）。
-const DEFAULT_MODEL = 'gpt-image-2';
-const MODEL_MAP = {};
+const DEFAULT_MODEL = 'doubao-seedream-4-5-251128';
+const MODEL_MAP = {
+  'seedream-4.5': 'doubao-seedream-4-5-251128',
+  'seedream-5.0': 'doubao-seedream-5-0-260128',
+  'flux': 'doubao-seedream-5-0-260128',
+};
 
 // 内置免费生图模型由 free-models.js 统一管理（管理员可增删改），生成时通过 getFreeModelMap() 动态读取。
 
@@ -65,9 +69,8 @@ const MODEL_MAP = {};
 // 注意：librsvg/pango 对字体「名字」的解析不稳定（LXGWWenKai-Regular 名字匹配不到），
 // 因此优先使用字体文件的「绝对路径」来确保中文一定能渲染，再回退到系统文泉驿。
 // 霞鹜文楷已安装到系统，使用其 family name（librsvg/pango 按 family name，而非字体文件路径匹配）
-const LXGW_FAMILY = '\'LXGW WenKai\'';
-const FONT_SERIF = `${LXGW_FAMILY}, 'WenQuanYi Micro Hei', 'Noto Serif CJK SC', serif`;
-const FONT_CN = `${LXGW_FAMILY}, 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif`;
+const FONT_SERIF = "'Liberation Serif', 'DejaVu Serif', serif";
+const FONT_CN = "'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif";
 
 // 中文标题 -> 英文标题：内置常用词汇字典 + 英文原样保留 + 拼音回退
 const CN_EN_DICT = {
@@ -260,7 +263,7 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
   let titleSvg = '';
   let ty = Math.round(canvasH * 0.28);
   for (const ln of titleLines) {
-    titleSvg += `<text x="${pad}" y="${ty}" font-family="${FONT_CN}" font-size="${titleFontSize}" fill="${lineColor}">${ln}</text>`;
+    titleSvg += `<text x="${pad}" y="${ty}" font-family="${FONT_SERIF}" font-size="${titleFontSize}" fill="${lineColor}">${ln}</text>`;
     ty += Math.round(titleFontSize * 1.4);
   }
 
@@ -277,7 +280,7 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
 
   const svg = `<svg width="${leftW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg">
     <rect width="100%" height="100%" fill="#F5EEE0"/>
-    <text x="${pad}" y="${num001Y}" font-family="${FONT_CN}" font-size="${num001Size}" fill="${lineColor}">001</text>
+    <text x="${pad}" y="${num001Y}" font-family="${FONT_SERIF}" font-size="${num001Size}" fill="${lineColor}">001</text>
     <line x1="${pad}" y1="${num001LineY}" x2="${leftW - pad}" y2="${num001LineY}" stroke="${lineColor}" stroke-width="1"/>
     ${titleSvg}
     ${locBlock}
@@ -381,16 +384,14 @@ async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
 // 处理图片：返回 base64 data URL（SDK 跳过 URL 可达性校验，对象存储签名 URL HEAD 会 403）
 async function processImageUrl(imageUrl) {
   if (!imageUrl) return null;
+  let buffer;
   if (imageUrl.startsWith('/upload/')) {
     const uploadDir = process.env.UPLOAD_DIR || '/tmp/zine-upload';
     const filename = imageUrl.replace('/upload/', '');
     const filePath = path.join(uploadDir, filename);
     try {
       if (fs.existsSync(filePath)) {
-        const fileBuffer = fs.readFileSync(filePath);
-        const ext = path.extname(filename).toLowerCase();
-        const contentType = ext === '.png' ? 'image/png' : 'image/jpeg';
-        return `data:${contentType};base64,${fileBuffer.toString('base64')}`;
+        buffer = fs.readFileSync(filePath);
       } else {
         console.error('[processImageUrl] file not found:', filePath);
         return null;
@@ -399,24 +400,49 @@ async function processImageUrl(imageUrl) {
       console.error('[processImageUrl] read error:', err.message);
       return null;
     }
+  } else if (imageUrl.startsWith('http')) {
+    try {
+      const res = await fetch(imageUrl);
+      buffer = Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      console.error('[processImageUrl] fetch error:', err.message);
+      return null;
+    }
+  } else {
+    return imageUrl;
   }
-  return imageUrl;
+  // 压缩图片到 600x800 以内，减少模型处理时间
+  try {
+    let img = sharp(buffer);
+    const meta = await img.metadata();
+    if (meta.width > 600 || meta.height > 800) {
+      img = img.resize(600, 800, { fit: 'inside', withoutEnlargement: true });
+    }
+    const compressed = await img.jpeg({ quality: 80 }).toBuffer();
+    return `data:image/jpeg;base64,${compressed.toString('base64')}`;
+  } catch (err) {
+    // 压缩失败则用原图
+    const ext = imageUrl.startsWith('/') ? path.extname(imageUrl).toLowerCase() : '.jpg';
+    const contentType = ext === '.png' ? 'image/png' : 'image/jpeg';
+    return `data:${contentType};base64,${buffer.toString('base64')}`;
+  }
 }
 
 async function modelGenerate(body, client, prompt, size) {
-  // 内置免费模型：走 OpenAI 兼容 /v1/images/generations（密钥存后端，不公开）
-  if (body._freeModel) {
-    return generateViaOpenAI(body._freeModel, prompt, size, body.imageUrl);
-  }
-  const generateReq = { prompt, model: body._model, size, watermark: false, responseFormat: 'b64_json' };
+  // 正面始终用 Seedream 模型生成，保证忠实原图构图
+  const generateReq = { prompt, model: DEFAULT_MODEL, size, watermark: false, responseFormat: 'b64_json' };
   if (body.imageUrl) {
     try {
       const processed = await processImageUrl(body.imageUrl);
-      if (processed) generateReq.image = processed;
+      if (processed) {
+        generateReq.image = processed;
+        console.log(`[Generation] image size: ${Math.round(processed.length / 1024)}KB`);
+      }
     } catch (imgErr) {
       console.error('[Generation] image error:', imgErr.message);
     }
   }
+  console.log(`[Generation] model: ${DEFAULT_MODEL}, size: ${size}, prompt length: ${prompt.length}`);
   const response = await client.generate(generateReq);
   const helper = client.getResponseHelper(response);
   if (!helper.success) {
@@ -815,20 +841,10 @@ router.post('/', async (req, res) => {
     body._palette = palette;
     console.log('[Generation] palette:', palette);
 
-    // ---- 1) 正面：生成插画素材 ----
-    // chat 类模型（入梦 Pro）走 AI 生成（支持图生图）
-    // 正面：AI 生成艺术风格画作（忠实原图构图 + 油画/水彩风格）
-    const isChatModel = freeModel && freeModel.kind === 'chat';
+    // ---- 1) 正面：始终用 coze SDK（Seedream）生成插画素材 ----
+    // Seedream 支持图生图，能忠实还原原图构图 + 艺术风格
     const [frontArtBuf, extractedBackLine] = await Promise.all([
       (async () => {
-        if (isChatModel) {
-          const freeModelMap = getFreeModelMap();
-          const fm = freeModelMap[body.provider?.modelKey || body.provider?.model];
-          if (fm) {
-            const [w, h] = `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`.split('x').map(Number);
-            return await generateViaOpenAI(fm, buildFrontArtPrompt(body), [w, h], body.imageUrl);
-          }
-        }
         return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
       })(),
       (async () => {
