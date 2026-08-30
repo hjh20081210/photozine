@@ -178,7 +178,22 @@ const store = reactive({
       }
     }
 
-    // ③ 确保免费模型存在（所有用户都有）
+    // ③ 清理旧的免费模型残留（Seedream/Flux 等已下线的内置免费模型）
+    const freeIds = new Set(this.FREE_MODELS.map((c) => c.id))
+    const beforeLen = list.length
+    list = list.filter((c) => {
+      // 只清理曾作为"内置免费模型"的旧配置（provider local + apiKey free），
+      // 但保留当前正在使用的新免费模型
+      const isLegacyFree = c && c.provider === 'local' && c.apiKey === 'free'
+      if (isLegacyFree && !freeIds.has(c.id)) {
+        if (activeId === c.id) activeId = ''
+        return false
+      }
+      return true
+    })
+    if (list.length !== beforeLen) needSave = true
+
+    // ④ 确保免费模型存在（所有用户都有）
     this.FREE_MODELS.forEach((freeCfg, idx) => {
       const exists = list.some((c) => c.id === freeCfg.id)
       if (!exists) {
@@ -187,10 +202,10 @@ const store = reactive({
       }
     })
 
-    // ④ 如果旧的默认 DeepSeek 模型还在且用户没改过，替换为 Seedream 4.5
+    // ⑤ 如果旧的默认 DeepSeek 模型还在且用户没改过，替换为第一个免费模型
     const oldDeepSeekIdx = list.findIndex((c) => c.id === 'cfg_default_deepseek_v4')
     if (oldDeepSeekIdx >= 0) {
-      // 用 Seedream 4.5 替换旧 DeepSeek（保留位置）
+      // 用第一个免费模型替换旧 DeepSeek（保留位置）
       list[oldDeepSeekIdx] = { ...this.FREE_MODELS[0], createdAt: list[oldDeepSeekIdx].createdAt }
       if (activeId === 'cfg_default_deepseek_v4') {
         activeId = this.FREE_MODELS[0].id

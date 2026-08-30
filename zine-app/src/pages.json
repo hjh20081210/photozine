@@ -89,6 +89,16 @@
 				"navigationBarTextStyle": "black",
 				"backgroundColor": "#F3EAD9"
 			}
+		},
+		{
+			"path": "pages/admin-free-models/admin-free-models",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "免费模型管理",
+				"navigationBarBackgroundColor": "#F3EAD9",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F3EAD9"
+			}
 		}
 	],
 	"globalStyle": {

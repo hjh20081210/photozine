@@ -138,6 +138,21 @@
         <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
       </view>
 
+      <!-- 管理员：免费模型管理 -->
+      <view v-if="user && user.isAdmin" class="line-item" @click="goAdminFreeModels">
+        <view class="li-left">
+          <view class="li-ico admin-ico">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </view>
+          <text class="li-txt serif">免费模型管理</text>
+        </view>
+        <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+      </view>
+
       <!-- 草稿 / MIT / Github -->
       <view class="line-item" @click="toast('草稿')">
         <text class="li-txt serif">草稿</text>
@@ -196,6 +211,9 @@ function goFeedback() {
 }
 function goAdminUsers() {
   uni.navigateTo({ url: '/pages/admin-users/admin-users' })
+}
+function goAdminFreeModels() {
+  uni.navigateTo({ url: '/pages/admin-free-models/admin-free-models' })
 }
 function logout() {
   store.clearAuth()

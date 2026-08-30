@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { fileURLToPath } from 'url';
+import { getFreeModelMap } from './free-models.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,35 +54,12 @@ const STYLE_PROMPTS = {
 const STYLE_FALLBACK = '手绘水彩插画风格，透明水彩晕染，水痕斑驳，纸张纹理，细腻笔触，低饱和柔和色彩，艺术插画';
 
 // 默认模型
-// 默认免费生图模型（OpenAI 兼容 /v1/images/generations），密钥存后端，不暴露给前端。
+// 默认免费生图模型（OpenAI 兼容 chat/completions），密钥存后端，不暴露给前端。
 // 默认为用户在「免费模型」里选的第一个（gpt-image-2）。
 const DEFAULT_MODEL = 'gpt-image-2';
 const MODEL_MAP = {};
 
-// 内置免费生图模型（模型2/3 同名为「入梦 Flash」，用不同内部 key 区分；model 为传给中转站的真实模型名）
-const FREE_MODEL_MAP = {
-  'gpt-image-2': {
-    label: 'gpt-image-2',
-    model: 'gpt-image-2',
-    baseUrl: 'https://www.aiyoyoo.com',
-    apiKey: 'sk-a095271aad1f06502970d814ec95d9d2b9cb58c9ebbc3a09aae54d4ad0f84403',
-  },
-  'rumeng-flash-1': {
-    label: '入梦 Flash',
-    model: '入梦 Flash',
-    baseUrl: 'https://speed.toter.me',
-    apiKey: 'sk-5mdURsNnT35HgftX0fXwoRK7zjsNj5TnvvZWdnbRcZFLEfSW',
-  },
-  'rumeng-flash-2': {
-    label: '入梦 Flash',
-    model: '入梦 Flash',
-    baseUrl: 'https://speed.toter.me',
-    apiKey: 'sk-GjeCPWiTENHjn18RA51Uax6xjgQgbUfD4ixgXRom6p1dVcKI',
-  },
-};
-
-// 内置免费模型引用（供生成路由识别：命中则走 OpenAI 兼容 /v1/images/generations）
-const freeModelMapRef = FREE_MODEL_MAP;
+// 内置免费生图模型由 free-models.js 统一管理（管理员可增删改），生成时通过 getFreeModelMap() 动态读取。
 
 // 字体族：柔和手写感（霞鹜文楷）+ 中文回退。
 // 注意：librsvg/pango 对字体「名字」的解析不稳定（LXGWWenKai-Regular 名字匹配不到），
@@ -440,19 +418,38 @@ async function modelGenerate(body, client, prompt, size) {
   return Buffer.from(b64, 'base64');
 }
 
-// OpenAI 兼容生图调用（/v1/images/generations），密钥由后端内置，不暴露给前端
+// OpenAI 兼容生图调用（chat/completions 格式出图），密钥由后端内置，不暴露给前端
+// gpt-image-2 等 OpenAI 图像模型通过 chat/completions 返回 content 数组中的 base64 图片
 async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
-  const { model, baseUrl, apiKey } = freeModel;
-  const url = `${baseUrl.replace(/\/$/, '')}/v1/images/generations`;
-  const body = { model, prompt, n: 1, size: size || '1024x1024', response_format: 'b64_json' };
-  // 图生图：gpt-image 系列支持 input_images；若中转站不支持会忽略
+  const { model, apiKey, endpoint } = freeModel;
+  const url = endpoint || `${(freeModel.baseUrl || '').replace(/\/$/, '')}/v1/chat/completions`;
+  const messages = [];
+  // 图生图：把用户图片以 image_url 形式传入（OpenAI 多模态格式）
   if (imageUrl) {
     try {
       const processed = await processImageUrl(imageUrl);
-      if (processed) body.image = processed;
+      if (processed) {
+        messages.push({ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: processed } }] });
+      } else {
+        messages.push({ role: 'user', content: prompt });
+      }
     } catch (imgErr) {
       console.error('[Generation] openai image input error:', imgErr.message);
+      messages.push({ role: 'user', content: prompt });
     }
+  } else {
+    messages.push({ role: 'user', content: prompt });
+  }
+  const body = {
+    model,
+    messages,
+    stream: false,
+    max_tokens: freeModel.kind === 'chat' ? 4096 : 4096,
+  };
+  // gpt-image 等 OpenAI 图像模型需带 modalities 声明输出图片；文本类模型(入梦Flash)不带
+  if (freeModel.kind !== 'chat') {
+    body.modalities = ['text', 'image'];
+    body.response_format = { type: 'b64_json' };
   }
   let res;
   try {
@@ -477,10 +474,42 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   } catch (e) {
     throw new Error(`模型接口返回格式异常: ${text.slice(0, 200)}`);
   }
+  const img = extractImageBase64(json);
+  if (!img) throw new Error('模型接口未返回图片数据');
+  if (img.type === 'url') {
+    const b = await fetchBase64(img.value);
+    return Buffer.from(b);
+  }
+  return Buffer.from(img.value, 'base64');
+}
+
+// 从 chat/completions 响应中抽取图片，返回 { type: 'b64' | 'url', value }
+function extractImageBase64(json) {
+  const content = json?.choices?.[0]?.message?.content;
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      if (part?.type === 'image_url' && part?.image_url?.url) {
+        const u = String(part.image_url.url);
+        const m = u.match(/^data:image\/[a-z+]+\;base64,(.*)$/i);
+        if (m) return { type: 'b64', value: m[1] };
+        if (/^https?:\/\//.test(u)) return { type: 'url', value: u };
+      }
+      if (part?.type === 'output_image' && part?.image_url?.url) {
+        const u = String(part.image_url.url);
+        const m = u.match(/^data:image\/[a-z+]+\;base64,(.*)$/i);
+        if (m) return { type: 'b64', value: m[1] };
+        if (/^https?:\/\//.test(u)) return { type: 'url', value: u };
+      }
+    }
+  } else if (typeof content === 'string') {
+    const m = content.match(/base64,([A-Za-z0-9+/=]+)/);
+    if (m) return { type: 'b64', value: m[1] };
+  }
+  // 兼容 images/generations 风格的 data[0].b64_json
   const item = json?.data?.[0];
-  const b64 = item?.b64_json || (typeof item?.url === 'string' ? await fetchBase64(item.url) : null);
-  if (!b64) throw new Error('模型接口未返回图片数据');
-  return Buffer.from(b64, 'base64');
+  if (item?.b64_json) return { type: 'b64', value: item.b64_json };
+  if (typeof item?.url === 'string' && /^https?:\/\//.test(item.url)) return { type: 'url', value: item.url };
+  return null;
 }
 
 async function fetchBase64(url) {
@@ -535,8 +564,8 @@ router.post('/', async (req, res) => {
   try {
     const body = req.body || {};
     const modelKey = body.provider?.model || body.model || 'gpt-image-2';
-    // 命中内置免费模型（OpenAI 兼容），走 /v1/images/generations；否则走 coze SDK
-    let freeModel = freeModelMapRef[modelKey] || null;
+    // 命中内置免费模型（OpenAI 兼容 chat/completions），走 generateViaOpenAI；否则走 coze SDK
+    let freeModel = getFreeModelMap()[modelKey] || null;
     const model = freeModel ? freeModel.model : (MODEL_MAP[modelKey] || DEFAULT_MODEL);
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers);
     const config = new Config();
