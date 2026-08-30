@@ -67,6 +67,55 @@ const LXGW_PATH = '/usr/share/fonts/truetype/lxgw/LXGWWenKai-Regular.ttf';
 const FONT_SERIF = `'${LXGW_PATH}', 'WenQuanYi Micro Hei', 'Noto Sans CJK SC', 'Liberation Serif', serif`;
 const FONT_CN = `'${LXGW_PATH}', 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif`;
 
+// 中文标题 -> 英文标题：内置常用词汇字典 + 英文原样保留 + 拼音回退
+const CN_EN_DICT = {
+  '冰岛': 'Iceland', '成都': 'Chengdu', '白鹭湾': 'Egret Bay', '海边': 'Seaside',
+  '湖泊': 'Lake', '湖': 'Lake', '山': 'Mountain', '海': 'Sea', '森林': 'Forest',
+  '树': 'Trees', '柳树': 'Willow', '日落': 'Sunset', '日出': 'Sunrise', '晨光': 'Morning Light',
+  '旅行': 'Travel', '游记': 'Travel Notes', '手记': 'Notes', '时光': 'Time', '记忆': 'Memory',
+  '风': 'Breeze', '雨': 'Rain', '云': 'Clouds', '雪': 'Snow', '海风': 'Sea Breeze',
+  '草原': 'Grassland', '沙漠': 'Desert', '城市': 'City', '码头': 'Pier', '灯塔': 'Lighthouse',
+  '小镇': 'Town', '村庄': 'Village', '花': 'Flower', '荷': 'Lotus', '月': 'Moon',
+  '夜': 'Night', '黄昏': 'Dusk', '清晨': 'Dawn', '春': 'Spring', '夏': 'Summer',
+  '秋': 'Autumn', '冬': 'Winter', '白鹭': 'Egret', '湾': 'Bay', '来信': 'Letter',
+};
+function toEnglishTitle(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  // 纯英文/数字标题原样保留
+  if (/^[A-Za-z0-9\s\-—.,'’:&]+$/.test(s)) return s;
+  // 中英混合：按词贪心最长匹配翻译，无法翻译的保留原样
+  const out = [];
+  let seg = '';
+  const flush = () => {
+    if (!seg) return;
+    // 贪心最长分词：从段首尝试匹配字典里最长的 key
+    let i = 0;
+    const words = [];
+    const keys = Object.keys(CN_EN_DICT).sort((a, b) => b.length - a.length);
+    while (i < seg.length) {
+      let matched = null;
+      for (const k of keys) {
+        if (k.length > 0 && seg.startsWith(k, i)) { matched = k; break; }
+      }
+      if (matched) { words.push(CN_EN_DICT[matched]); i += matched.length; }
+      else { words.push(seg[i]); i += 1; }
+    }
+    for (const w of words) { if (w) { out.push(w); } }
+    seg = '';
+  };
+  for (const ch of s) {
+    if (/[\u4e00-\u9fff]/.test(ch)) {
+      seg += ch;
+    } else {
+      flush();
+      if (ch.trim()) out.push(ch);
+    }
+  }
+  flush();
+  return out.join(' ').replace(/\s+/g, ' ').trim() || s;
+}
+
 // 比例 -> 画布像素尺寸（保持比例，最长边 1024）
 function getSize(ratio) {
   if (!ratio) return { w: 1024, h: 1024 };
@@ -129,7 +178,7 @@ async function extractPalette(imgBuf) {
 function buildBackLinePrompt(body) {
   const { style } = body;
   const stylePrompt = STYLE_PROMPTS[style] || STYLE_FALLBACK;
-  return `根据参考照片绘制一张纯粹的素描线稿插画：只保留照片中最有视觉吸引力、最能代表画面气质的单一主体元素（如帆船、森林木屋、海边、山峰、马匹等），用流畅的黑色铅笔/炭笔线条勾勒其外轮廓与结构，线条纤细优雅，适当留白，单色（深灰/墨色），背景为干净白色，大量留白。这是作为明信片背面左侧的装饰线稿，画面中绝对不能出现任何文字、字母、数字、标点、标志、logo，绝对不能出现任何文字。整体克制的日系旅行手账风格。`
+  return `根据参考照片绘制一张纯粹的素描线稿插画：精确提取参考照片中占据视觉中心、最能代表画面气质的那一个主体景物，忠实按照照片中该主体的真实形态、朝向、比例与细节，用流畅的黑色铅笔/炭笔线条勾勒其外轮廓与内部结构，线条纤细优雅，适当留白，单色（深灰/墨色），背景为干净白色，大量留白。注意：画面主体必须是参考照片里的那个景物本身，不要添加照片中不存在的任何其他事物。这是作为明信片背面左侧的装饰线稿，画面中绝对不能出现任何文字、字母、数字、标点、标志、logo，绝对不能出现任何文字。整体克制的日系旅行手账风格。`
     .replace(/\s+/g, ' ').trim();
 }
 
@@ -138,7 +187,7 @@ function buildFrontArtPrompt(body) {
   const { style, title, location, date } = body;
   const stylePrompt = STYLE_PROMPTS[style] || STYLE_FALLBACK;
   const titleText = title ? `主题为 "${esc(String(title).replace(/\n/g, ' '))}"` : '';
-  return `根据参考照片创作一幅克制的手绘插画：严格忠实参考照片的构图、视角、主体、远近与色彩关系，将照片中最具视觉吸引力、最能代表画面气质的单一主景物（如帆船、森林木屋、海边、山峰、马匹等）转化为${stylePrompt}。插画与原片主体高度相似、可辨认，只是转换为插画质感。画面带不规则水彩淡墨晕染毛边，颜料扩散斑驳水痕，半透明水彩质感，同色系柔和低饱和，边缘留白。${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`
+  return `根据参考照片创作一幅克制的手绘插画：严格忠实参考照片的构图、视角、主体、远近与色彩关系，将照片中最具视觉吸引力、最能代表画面气质的单一主景物（必须是照片里真实存在的那一个主体景物，按其真实形态与细节刻画）转化为${stylePrompt}。插画与原片主体高度相似、可辨认，只是转换为插画质感。画面带不规则水彩淡墨晕染毛边，颜料扩散斑驳水痕，半透明水彩质感，同色系柔和低饱和，边缘留白。${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`
     .replace(/\s+/g, ' ').trim();
 }
 
@@ -160,7 +209,8 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
   const labelColor = '#9B8B78';
   const swatch = body._palette ? body._palette.split(',').map(s => s.trim()) : ['#A8C4DA', '#2E4A66', '#E2D8C9'];
 
-  const titleText = esc(title && String(title).trim() ? String(title).trim() : 'UNTITLED');
+  const enTitle = title && String(title).trim() ? toEnglishTitle(String(title).trim()) : '';
+  const titleText = esc(enTitle || 'UNTITLED');
   const subTitle = esc(location && String(location).trim() ? String(location).trim() : '');
   const locText = esc(location && String(location).trim() ? String(location).trim() : '');
   const dateText = esc(date && String(date).trim() ? String(date).trim() : '');
@@ -181,12 +231,12 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
     if (cur) arr.push(cur);
     return arr;
   }
-  const titleLines = wrapLines(titleText, 8).slice(0, 3);
+  const titleLines = wrapLines(titleText, 9).slice(0, 3);
   let titleSvg = '';
   let ty = Math.round(canvasH * 0.30);
   for (const ln of titleLines) {
-    titleSvg += `<text x="${pad}" y="${ty}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.14)}" fill="${lineColor}">${ln}</text>`;
-    ty += Math.round(leftW * 0.20);
+    titleSvg += `<text x="${pad}" y="${ty}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.105)}" fill="${lineColor}">${ln}</text>`;
+    ty += Math.round(leftW * 0.155);
   }
 
   const svg = `<svg width="${leftW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg">
@@ -194,7 +244,7 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
     <text x="${pad}" y="${Math.round(canvasH * 0.14)}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.11)}" fill="${lineColor}">001</text>
     <line x1="${pad}" y1="${Math.round(canvasH * 0.16)}" x2="${leftW - pad}" y2="${Math.round(canvasH * 0.16)}" stroke="${lineColor}" stroke-width="1"/>
     ${titleSvg}
-    <text x="${pad}" y="${Math.round(canvasH * 0.16 + (titleLines.length) * leftW * 0.20)}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.075)}" fill="${subColor}" font-style="italic">${subTitle}</text>
+    <text x="${pad}" y="${Math.round(canvasH * 0.16 + (titleLines.length) * leftW * 0.155)}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.06)}" fill="${subColor}">${subTitle}</text>
     <text x="${pad}" y="${fieldY}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.065)}" fill="${labelColor}">LOCATION</text>
     ${locText ? `<text x="${leftW - pad}" y="${fieldY}" text-anchor="end" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.055)}" fill="${subColor}">${locText}</text>` : ''}
     <line x1="${pad}" y1="${fieldY + 10}" x2="${leftW - pad}" y2="${fieldY + 10}" stroke="${labelColor}" stroke-width="1"/>
@@ -221,9 +271,9 @@ async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
   const leftHalfW = Math.round(canvasW * 0.44);
   const rightX = Math.round(canvasW * 0.50);
 
-  // 左侧线稿铺满左半（铺到 94% 宽，留出周边白边）
+  // 左侧线稿(已透明背景)直接铺在明信片底上，按左栏宽高无缝填充（不产生白纸边）
   const lineSized = await sharp(lineBuffer)
-    .resize(Math.round(canvasW * 0.42), Math.round(canvasH * 0.72), { fit: 'contain', background: { r: 245, g: 238, b: 224 } })
+    .resize(Math.round(canvasW * 0.42), Math.round(canvasH * 0.70), { fit: 'fill', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png().toBuffer();
 
   const boxSize = Math.round(canvasW * 0.030);
@@ -352,23 +402,38 @@ function inferTitle(body) {
   return '时光信笺';
 }
 
-// 从用户原图提取"白底黑线"的真实素描线稿（描摹主体轮廓，必基于用户图片）
+// 从用户原图提取"透明背景黑线"的真实素描线稿（描摹主体轮廓，必基于用户图片，直接画在明信片底上）
 async function extractLineArtFromImage(imgBuf) {
   try {
     const meta = await sharp(imgBuf).metadata();
-    const W = 900;
+    const W = 820;
     const H = Math.max(1, Math.round((meta.height || 900) * W / (meta.width || 1200)));
-    // 灰度 + 拉普拉斯边缘检测 → normalise → 阈值二值化(滤出边缘) → 反相得到纯净白底黑线素描
-    const gray = await sharp(imgBuf).resize(W, H).grayscale().toBuffer();
-    const line = await sharp(gray)
-      .convolve({ width: 3, height: 3, kernel: [-1, -1, -1, -1, 8, -1, -1, -1, -1] })
-      .normalise()
-      .threshold(160)
-      .negate()
-      .normalise()
-      .png()
-      .toBuffer();
-    return line;
+    // 1) 灰度 + 高斯模糊去噪：剔除湖面波纹/树叶等高频噪点，只保留显著对象轮廓
+    const gray = await sharp(imgBuf).resize(W, H).grayscale().blur(0.8).toBuffer();
+    // 2) 边缘检测（Sobel 组合）
+    const horiz = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, 0, 1, -2, 0, 2, -1, 0, 1] }).normalise().toBuffer();
+    const vert = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, -2, -1, 0, 0, 0, 1, 2, 1] }).normalise().toBuffer();
+    // 3) 边缘强度相加 + 归一化
+    const edges = await sharp(horiz).composite([{ input: vert, blend: 'add' }]).normalise().toBuffer();
+    // 4) 自适应分位数阈值：只保留最显著的 2% 边缘（显著轮廓/主干），剔除波纹等细碎噪点
+    const { data } = await sharp(edges).greyscale().raw().toBuffer({ resolveWithObject: true });
+    const arr = Array.from(data).sort((a, b) => a - b);
+    const N = arr.length;
+    const thr = arr[Math.max(0, Math.floor(N * 0.95))];
+    // 5) 构造透明背景黑线：高于阈值的边缘 -> 深棕色线条，其余 -> 全透明
+    const out = Buffer.alloc(N * 4);
+    for (let i = 0; i < N; i++) {
+      const g = data[i];
+      // 越靠近边缘高亮(g 越大) 线条越实；低于阈值 -> 全透明
+      const a = g >= thr ? Math.min(255, Math.round((g - thr) * 9)) : 0;
+      if (a > 0) {
+        out[i * 4] = 45;      // R 深棕
+        out[i * 4 + 1] = 38;  // G
+        out[i * 4 + 2] = 30;  // B
+        out[i * 4 + 3] = a;   // A
+      }
+    }
+    return await sharp(out, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
   } catch (e) {
     console.warn('[extractLineArtFromImage] failed:', e.message);
     return null;
