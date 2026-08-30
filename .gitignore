@@ -17,3 +17,5 @@ target/
 .preview
 .cozeproj/reduction
 .codegraph
+.pnpm-store/
+.trae-html-share-packages/

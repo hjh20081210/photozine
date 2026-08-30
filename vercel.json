@@ -1,0 +1,16 @@
+{
+  "framework": "other",
+  "buildCommand": "cd zine-app && pnpm install && pnpm build:h5",
+  "outputDirectory": "zine-app/dist/build/h5",
+  "installCommand": "",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://zine-backend-production.up.railway.app/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
