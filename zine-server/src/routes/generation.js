@@ -455,11 +455,29 @@ function normalizeImageSize(size) {
 // kind 'chat'  → 走完整 endpoint URL，以 chat 多模态 messages 传图（content 数组含 image_url）
 async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   const { model, apiKey, endpoint, kind } = freeModel;
-  // 图生图：把用户图片转 base64 data URL
+  // 图生图：把用户图片转 base64 data URL（chat 类模型压缩到 300x400 避免 413 请求体过大）
   let inputData = null;
   if (imageUrl) {
     try {
-      inputData = await processImageUrl(imageUrl);
+      if (kind === 'chat') {
+        // chat 类模型：用 sharp 压缩图片到 300x400，避免请求体过大被反向代理拒绝
+        const sharp = (await import('sharp')).default;
+        const fs = (await import('fs')).default;
+        const path = (await import('path')).default;
+        const isLocalPath = imageUrl.startsWith('/upload/') || !imageUrl.startsWith('http');
+        let imgBuf;
+        if (isLocalPath) {
+          const filePath = path.join('/tmp/zine-upload', path.basename(imageUrl));
+          imgBuf = await sharp(filePath).resize(300, 400, { fit: 'fill' }).jpeg({ quality: 70 }).toBuffer();
+        } else {
+          const raw = await fetch(imageUrl);
+          const ab = await raw.arrayBuffer();
+          imgBuf = await sharp(Buffer.from(ab)).resize(300, 400, { fit: 'fill' }).jpeg({ quality: 70 }).toBuffer();
+        }
+        inputData = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
+      } else {
+        inputData = await processImageUrl(imageUrl);
+      }
     } catch (imgErr) {
       console.error('[Generation] openai image input error:', imgErr.message);
       inputData = null;
@@ -474,7 +492,7 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
     const content = inputData
       ? [{ type: 'text', text: svgPrompt }, { type: 'image_url', image_url: { url: inputData } }]
       : [{ type: 'text', text: svgPrompt }];
-    body = { model, messages: [{ role: 'user', content }], stream: false, max_tokens: 8000 };
+    body = { model, messages: [{ role: 'user', content }], stream: false, max_tokens: 12000 };
   } else {
     // image 类模型：用 base 拼标准图像端点
     const base = extractBase(endpoint) || (freeModel.baseUrl || '').replace(/\/$/, '');
@@ -488,6 +506,9 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   }
   let res;
   try {
+    // 设置 fetch 超时 120 秒（入梦 Pro 需要约 66 秒）
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
     res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -495,7 +516,9 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
   } catch (netErr) {
     throw new Error(`模型接口网络错误: ${netErr.message}`);
   }
