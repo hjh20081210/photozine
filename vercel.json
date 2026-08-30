@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://hjh20081210-photozine.hf.space/api/$1"
+      "destination": "http://你的甲骨文公网IP:8080/api/$1"
     },
     {
       "source": "/(.*)",
