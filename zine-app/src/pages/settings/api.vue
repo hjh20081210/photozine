@@ -12,8 +12,8 @@
     </view>
 
     <scroll-view scroll-y class="body" :style="{ paddingBottom: '220rpx' }">
-      <!-- 空状态 -->
-      <view v-if="store.modelConfigs.length === 0" class="empty">
+      <!-- 空状态（仅当没有用户自定义模型时） -->
+      <view v-if="store.modelConfigs.filter(x => !x.free).length === 0" class="empty">
         <view class="empty-ico">
           <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#8FA56F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="14" rx="3" />
@@ -25,10 +25,10 @@
         <text class="empty-sub">点击下方按钮，添加你自己的服务商与 API Key</text>
       </view>
 
-      <!-- 模型列表 -->
+      <!-- 模型列表（过滤掉内置免费模型，只显示用户自定义模型） -->
       <view v-else class="cfg-list">
         <view
-          v-for="c in store.modelConfigs"
+          v-for="c in store.modelConfigs.filter(x => !x.free)"
           :key="c.id"
           class="cfg-item neo-card"
           @click="goEdit(c)"

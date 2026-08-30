@@ -53,12 +53,35 @@ const STYLE_PROMPTS = {
 const STYLE_FALLBACK = '手绘水彩插画风格，透明水彩晕染，水痕斑驳，纸张纹理，细腻笔触，低饱和柔和色彩，艺术插画';
 
 // 默认模型
-const DEFAULT_MODEL = 'doubao-seedream-4-5-251128';
-const MODEL_MAP = {
-  'seedream-4.5': 'doubao-seedream-4-5-251128',
-  'seedream-5.0': 'doubao-seedream-5-0-260128',
-  'flux': 'doubao-seedream-5-0-260128',
+// 默认免费生图模型（OpenAI 兼容 /v1/images/generations），密钥存后端，不暴露给前端。
+// 默认为用户在「免费模型」里选的第一个（gpt-image-2）。
+const DEFAULT_MODEL = 'gpt-image-2';
+const MODEL_MAP = {};
+
+// 内置免费生图模型（模型2/3 同名为「入梦 Flash」，用不同内部 key 区分；model 为传给中转站的真实模型名）
+const FREE_MODEL_MAP = {
+  'gpt-image-2': {
+    label: 'gpt-image-2',
+    model: 'gpt-image-2',
+    baseUrl: 'https://www.aiyoyoo.com',
+    apiKey: 'sk-a095271aad1f06502970d814ec95d9d2b9cb58c9ebbc3a09aae54d4ad0f84403',
+  },
+  'rumeng-flash-1': {
+    label: '入梦 Flash',
+    model: '入梦 Flash',
+    baseUrl: 'https://speed.toter.me',
+    apiKey: 'sk-5mdURsNnT35HgftX0fXwoRK7zjsNj5TnvvZWdnbRcZFLEfSW',
+  },
+  'rumeng-flash-2': {
+    label: '入梦 Flash',
+    model: '入梦 Flash',
+    baseUrl: 'https://speed.toter.me',
+    apiKey: 'sk-GjeCPWiTENHjn18RA51Uax6xjgQgbUfD4ixgXRom6p1dVcKI',
+  },
 };
+
+// 内置免费模型引用（供生成路由识别：命中则走 OpenAI 兼容 /v1/images/generations）
+const freeModelMapRef = FREE_MODEL_MAP;
 
 // 字体族：柔和手写感（霞鹜文楷）+ 中文回退。
 // 注意：librsvg/pango 对字体「名字」的解析不稳定（LXGWWenKai-Regular 名字匹配不到），
@@ -394,6 +417,10 @@ async function processImageUrl(imageUrl) {
 }
 
 async function modelGenerate(body, client, prompt, size) {
+  // 内置免费模型：走 OpenAI 兼容 /v1/images/generations（密钥存后端，不公开）
+  if (body._freeModel) {
+    return generateViaOpenAI(body._freeModel, prompt, size, body.imageUrl);
+  }
   const generateReq = { prompt, model: body._model, size, watermark: false, responseFormat: 'b64_json' };
   if (body.imageUrl) {
     try {
@@ -411,6 +438,56 @@ async function modelGenerate(body, client, prompt, size) {
   const b64 = helper.imageB64List[0];
   if (!b64) throw new Error('生成返回数据异常');
   return Buffer.from(b64, 'base64');
+}
+
+// OpenAI 兼容生图调用（/v1/images/generations），密钥由后端内置，不暴露给前端
+async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
+  const { model, baseUrl, apiKey } = freeModel;
+  const url = `${baseUrl.replace(/\/$/, '')}/v1/images/generations`;
+  const body = { model, prompt, n: 1, size: size || '1024x1024', response_format: 'b64_json' };
+  // 图生图：gpt-image 系列支持 input_images；若中转站不支持会忽略
+  if (imageUrl) {
+    try {
+      const processed = await processImageUrl(imageUrl);
+      if (processed) body.image = processed;
+    } catch (imgErr) {
+      console.error('[Generation] openai image input error:', imgErr.message);
+    }
+  }
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (netErr) {
+    throw new Error(`模型接口网络错误: ${netErr.message}`);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`模型接口返回 ${res.status}: ${text.slice(0, 200)}`);
+  }
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`模型接口返回格式异常: ${text.slice(0, 200)}`);
+  }
+  const item = json?.data?.[0];
+  const b64 = item?.b64_json || (typeof item?.url === 'string' ? await fetchBase64(item.url) : null);
+  if (!b64) throw new Error('模型接口未返回图片数据');
+  return Buffer.from(b64, 'base64');
+}
+
+async function fetchBase64(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('图片下载失败');
+  const ab = await res.arrayBuffer();
+  return Buffer.from(ab).toString('base64');
 }
 
 // 同步生成接口
@@ -457,12 +534,15 @@ async function extractLineArtFromImage(imgBuf) {
 router.post('/', async (req, res) => {
   try {
     const body = req.body || {};
-    const modelKey = body.provider?.model || body.model || 'seedream-4.5';
-    const model = MODEL_MAP[modelKey] || DEFAULT_MODEL;
+    const modelKey = body.provider?.model || body.model || 'gpt-image-2';
+    // 命中内置免费模型（OpenAI 兼容），走 /v1/images/generations；否则走 coze SDK
+    let freeModel = freeModelMapRef[modelKey] || null;
+    const model = freeModel ? freeModel.model : (MODEL_MAP[modelKey] || DEFAULT_MODEL);
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers);
     const config = new Config();
     const client = new ImageGenerationClient(config, customHeaders);
     body._model = model;
+    body._freeModel = freeModel;
     // 用户显式填了标题才保留（AI 拟题仅基于主题/风格，绝不混入日期地点；未填则标题留空）
     body.title = body.title && String(body.title).trim() ? String(body.title).trim() : '';
 

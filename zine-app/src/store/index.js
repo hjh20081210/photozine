@@ -102,26 +102,40 @@ const store = reactive({
   // 所有用户默认可用的免费模型，通过本地生成代理调用，无需配置 API Key
   FREE_MODELS: [
     {
-      id: 'cfg_free_seedream_4_5',
-      name: 'Seedream 4.5（免费）',
+      id: 'cfg_free_gpt_image_2',
+      name: 'gpt-image-2（免费）',
       provider: 'local',
       apiFormat: 'image',
-      baseUrl: '',  // 留空表示使用 serverUrl 本地代理
+      baseUrl: '',  // 留空表示使用 serverUrl 本地代理，密钥在后端不公开
       customPath: '',
       apiKey: 'free',
-      model: 'seedream-4.5',
+      model: 'gpt-image-2',
       imageInput: 'auto',
+      free: true,
     },
     {
-      id: 'cfg_free_flux',
-      name: 'Flux（免费）',
+      id: 'cfg_free_rumeng_flash_1',
+      name: '入梦 Flash（免费）',
       provider: 'local',
       apiFormat: 'image',
       baseUrl: '',
       customPath: '',
       apiKey: 'free',
-      model: 'seedream-4.5',  // 免费版统一走 Seedream 模型
+      model: 'rumeng-flash-1',
       imageInput: 'auto',
+      free: true,
+    },
+    {
+      id: 'cfg_free_rumeng_flash_2',
+      name: '入梦 Flash（免费）',
+      provider: 'local',
+      apiFormat: 'image',
+      baseUrl: '',
+      customPath: '',
+      apiKey: 'free',
+      model: 'rumeng-flash-2',
+      imageInput: 'auto',
+      free: true,
     },
   ],
 
@@ -247,6 +261,7 @@ const store = reactive({
   deleteConfig(id) {
     const idx = this.modelConfigs.findIndex((c) => c.id === id)
     if (idx < 0) return
+    if (this.modelConfigs[idx].free) return // 内置免费模型不可删除
     this.modelConfigs.splice(idx, 1)
     this.saveModelConfigs()
     if (this.activeConfigId === id) {
