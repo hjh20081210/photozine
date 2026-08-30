@@ -102,6 +102,19 @@ const store = reactive({
   // 所有用户默认可用的免费模型，通过本地生成代理调用，无需配置 API Key
   FREE_MODELS: [
     {
+      id: 'cfg_free_rumeng_pro',
+      name: '入梦 Pro（免费）',
+      provider: 'local',
+      apiFormat: 'chat',
+      baseUrl: '',
+      customPath: '',
+      apiKey: 'free',
+      model: '入梦 Pro',
+      modelKey: 'rumeng-pro',
+      imageInput: 'auto',
+      free: true,
+    },
+    {
       id: 'cfg_free_gpt_image_2',
       name: 'gpt-image-2（免费）',
       provider: 'local',

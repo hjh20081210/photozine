@@ -4,8 +4,8 @@ import path from 'path';
 import { loadDB, findByToken } from './auth-db.js';
 
 // 默认免费模型（密钥存后端，不对外暴露完整密钥到非管理员）
-// endpoint 一律存 base（不含 /v1/chat/completions 或 /v1/images/* 路径），
-// generation.js 会按「统一走 /v1/images/generations，图生图带 image 参数」自动拼接
+// kind: 'image' → endpoint 存 base，generation.js 拼 /v1/images/* 端点
+// kind: 'chat'  → endpoint 存完整 URL，图生图用多模态 messages
 const DEFAULT_FREE_MODELS = {
   'gpt-image-2': {
     name: 'gpt-image-2',
@@ -13,6 +13,13 @@ const DEFAULT_FREE_MODELS = {
     endpoint: 'https://www.aiyoyoo.com',
     apiKey: 'sk-52678f321d8e14eb1a056465f6841c297e08361ef63a552270ad77f903dcdd37',
     kind: 'image',
+  },
+  'rumeng-pro': {
+    name: '入梦 Pro',
+    model: '入梦 Pro',
+    endpoint: 'https://speed.toter.me/chat/completions',
+    apiKey: 'sk-GjeCPWiTENHjn18RA51Uax6xjgQgbUfD4ixgXRom6p1dVcKI',
+    kind: 'chat',
   },
 };
 

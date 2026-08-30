@@ -450,12 +450,12 @@ function normalizeImageSize(size) {
   return '1024x1024';
 }
 
-// OpenAI 兼容生图调用：一律走标准 image 端点（文生图 /v1/images/generations，图生图 /v1/images/edits）
-// 密钥由后端内置，不暴露给前端
+// OpenAI 兼容生图调用
+// kind 'image' → 走标准 image 端点（文生图 /v1/images/generations，图生图 /v1/images/edits）
+// kind 'chat'  → 走完整 endpoint URL，以 chat 多模态 messages 传图（content 数组含 image_url）
 async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
-  const { model, apiKey, endpoint } = freeModel;
-  const base = extractBase(endpoint) || (freeModel.baseUrl || '').replace(/\/$/, '');
-  // 图生图：把用户图片以 images:[{image_url}] 形式传入（OpenAI 标准格式）
+  const { model, apiKey, endpoint, kind } = freeModel;
+  // 图生图：把用户图片转 base64 data URL
   let inputData = null;
   if (imageUrl) {
     try {
@@ -465,14 +465,26 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
       inputData = null;
     }
   }
-  // 图生图走 /v1/images/edits（带 images 数组），文生图走 /v1/images/generations
   let url, body;
-  if (inputData) {
-    url = `${base}/v1/images/edits`;
-    body = { model, prompt, images: [{ image_url: inputData }], size: normalizeImageSize(size), n: 1 };
+  if (kind === 'chat') {
+    // chat 类模型（如入梦 Pro）：用完整 endpoint URL
+    // 明确要求返回完整 SVG（避免 HTML/CSS），增大 max_tokens 防截断
+    url = String(endpoint || '').replace(/\/$/, '');
+    const svgPrompt = `${prompt}。要求：直接返回完整的SVG代码（以<svg>开头），不要返回HTML、CSS、markdown代码块或其他格式。SVG宽度600，高度400。`;
+    const content = inputData
+      ? [{ type: 'text', text: svgPrompt }, { type: 'image_url', image_url: { url: inputData } }]
+      : [{ type: 'text', text: svgPrompt }];
+    body = { model, messages: [{ role: 'user', content }], stream: false, max_tokens: 8000 };
   } else {
-    url = `${base}/v1/images/generations`;
-    body = { model, prompt, size: normalizeImageSize(size), n: 1 };
+    // image 类模型：用 base 拼标准图像端点
+    const base = extractBase(endpoint) || (freeModel.baseUrl || '').replace(/\/$/, '');
+    if (inputData) {
+      url = `${base}/v1/images/edits`;
+      body = { model, prompt, images: [{ image_url: inputData }], size: normalizeImageSize(size), n: 1 };
+    } else {
+      url = `${base}/v1/images/generations`;
+      body = { model, prompt, size: normalizeImageSize(size), n: 1 };
+    }
   }
   let res;
   try {
@@ -497,13 +509,38 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   } catch (e) {
     throw new Error(`模型接口返回格式异常: ${text.slice(0, 200)}`);
   }
-  const img = extractImageBase64(json);
-  if (!img) throw new Error('模型接口未返回图片数据');
-  if (img.type === 'url') {
-    const b = await fetchBase64(img.value);
-    return Buffer.from(b);
+  // 针对 chat 类模型，从多模态 content 中提取图片或 SVG
+  if (kind === 'chat') {
+    const img = extractImageBase64(json);
+    if (!img) throw new Error('模型接口未返回图片数据');
+    if (img.type === 'url') {
+      const b = await fetchBase64(img.value);
+      return Buffer.from(b);
+    }
+    if (img.type === 'svg') {
+      // SVG 文本 → sharp 栅格化为 PNG Buffer
+      const png = await sharp(Buffer.from(img.value, 'utf8')).png().toBuffer();
+      return png;
+    }
+    return Buffer.from(img.value, 'base64');
   }
-  return Buffer.from(img.value, 'base64');
+  // image 类模型：从 data[0].b64_json 或 data[0].url 提取
+  const data = json?.data;
+  if (Array.isArray(data) && data.length) {
+    const item = data[0];
+    if (typeof item?.b64_json === 'string' && item.b64_json.length > 100) {
+      return Buffer.from(item.b64_json, 'base64');
+    }
+    if (typeof item?.url === 'string' && /^https?:\/\//.test(item.url)) {
+      const b = await fetchBase64(item.url);
+      return Buffer.from(b);
+    }
+    if (typeof item?.url === 'string' && item.url.startsWith('data:')) {
+      const m = item.url.match(/^data:image\/[a-z+]+\;base64,(.*)$/i);
+      if (m) return Buffer.from(m[1], 'base64');
+    }
+  }
+  throw new Error('模型接口未返回图片数据');
 }
 
 // 从 chat/completions 响应中抽取图片，返回 { type: 'b64' | 'url', value }
@@ -527,6 +564,12 @@ function extractImageBase64(json) {
   } else if (typeof content === 'string') {
     const m = content.match(/base64,([A-Za-z0-9+/=]+)/);
     if (m) return { type: 'b64', value: m[1] };
+    // 从文本中提取 SVG（含 markdown ```svg 代码块）
+    const svgMatch = content.match(/```(?:svg)?\s*\n?([\s\S]*?)```/) || content.match(/<svg[\s\S]*?<\/svg>/i);
+    if (svgMatch) {
+      const svg = (svgMatch[1] || svgMatch[0]).trim();
+      if (svg.length > 50) return { type: 'svg', value: svg };
+    }
   }
   // 兼容 images/generations 风格的 data[0].b64_json
   const item = json?.data?.[0];
