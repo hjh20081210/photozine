@@ -1,0 +1,15 @@
+services:
+  # 后端 API 服务
+  - type: web
+    name: photozine-backend
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: pnpm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_VERSION
+        value: 22
