@@ -63,9 +63,10 @@ const MODEL_MAP = {
 // 字体族：柔和手写感（霞鹜文楷）+ 中文回退。
 // 注意：librsvg/pango 对字体「名字」的解析不稳定（LXGWWenKai-Regular 名字匹配不到），
 // 因此优先使用字体文件的「绝对路径」来确保中文一定能渲染，再回退到系统文泉驿。
-const LXGW_PATH = '/usr/share/fonts/truetype/lxgw/LXGWWenKai-Regular.ttf';
-const FONT_SERIF = `'${LXGW_PATH}', 'WenQuanYi Micro Hei', 'Noto Sans CJK SC', 'Liberation Serif', serif`;
-const FONT_CN = `'${LXGW_PATH}', 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif`;
+// 霞鹜文楷已安装到系统，使用其 family name（librsvg/pango 按 family name，而非字体文件路径匹配）
+const LXGW_FAMILY = '\'LXGW WenKai\'';
+const FONT_SERIF = `${LXGW_FAMILY}, 'WenQuanYi Micro Hei', 'Noto Serif CJK SC', serif`;
+const FONT_CN = `${LXGW_FAMILY}, 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif`;
 
 // 中文标题 -> 英文标题：内置常用词汇字典 + 英文原样保留 + 拼音回退
 const CN_EN_DICT = {
@@ -210,14 +211,13 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
   const swatch = body._palette ? body._palette.split(',').map(s => s.trim()) : ['#A8C4DA', '#2E4A66', '#E2D8C9'];
 
   const enTitle = title && String(title).trim() ? toEnglishTitle(String(title).trim()) : '';
-  const titleText = esc(enTitle || 'UNTITLED');
-  const subTitle = esc(location && String(location).trim() ? String(location).trim() : '');
+  // 用户未填标题时留空（不输出 UNTITLED、不混入日期/地点）
+  const titleText = esc(enTitle || '');
   const locText = esc(location && String(location).trim() ? String(location).trim() : '');
   const dateText = esc(date && String(date).trim() ? String(date).trim() : '');
 
-  const fieldY = Math.round(canvasH * 0.52);
-  const swatchY = Math.round(canvasH * 0.74);
-  const swatchSize = Math.max(26, Math.round(leftW * 0.16));
+  const swatchY = Math.round(canvasH * 0.78);
+  const swatchSize = Math.max(24, Math.round(leftW * 0.15));
 
   // 文字可能很长，做简单换行
   function wrapLines(t, maxChars) {
@@ -231,26 +231,47 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
     if (cur) arr.push(cur);
     return arr;
   }
-  const titleLines = wrapLines(titleText, 9).slice(0, 3);
-  let titleSvg = '';
-  let ty = Math.round(canvasH * 0.30);
-  for (const ln of titleLines) {
-    titleSvg += `<text x="${pad}" y="${ty}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.105)}" fill="${lineColor}">${ln}</text>`;
-    ty += Math.round(leftW * 0.155);
+
+  // 字段块：标签在上，横线在下，值写在横线上方（unfilled 则为空横线）
+  function fieldBlock(label, value, y, fontSize) {
+    const vfs = Math.round(fontSize * 0.9);
+    const labelY = y;
+    const lineY = y + Math.round(fontSize * 1.3);
+    const valY = lineY - Math.round(vfs * 0.55);
+    return `
+    <text x="${pad}" y="${labelY}" font-family="${FONT_CN}" font-size="${fontSize}" fill="${labelColor}">${label}</text>
+    ${value ? `<text x="${pad}" y="${valY}" font-family="${FONT_CN}" font-size="${vfs}" fill="${subColor}">${value}</text>` : ''}
+    <line x1="${pad}" y1="${lineY}" x2="${leftW - pad}" y2="${lineY}" stroke="${labelColor}" stroke-width="1"/>`;
   }
+
+  const titleLines = wrapLines(titleText, 9).slice(0, 3);
+  const titleFontSize = Math.round(leftW * 0.085);
+  // 标题起始位置：001 线下方留白
+  let titleSvg = '';
+  let ty = Math.round(canvasH * 0.28);
+  for (const ln of titleLines) {
+    titleSvg += `<text x="${pad}" y="${ty}" font-family="${FONT_CN}" font-size="${titleFontSize}" fill="${lineColor}">${ln}</text>`;
+    ty += Math.round(titleFontSize * 1.4);
+  }
+
+  // 001 缩小
+  const num001Size = Math.round(leftW * 0.07);
+  const num001Y = Math.round(canvasH * 0.11);
+  const num001LineY = num001Y + Math.round(num001Size * 1.4);
+
+  // 字段底部长横线（贯穿左栏，与标题/色块分隔）
+  const fieldTopY = Math.round(canvasH * 0.50);
+  const fieldStep = Math.round(canvasH * 0.11);
+  const locBlock = fieldBlock('LOCATION', locText, fieldTopY, Math.round(leftW * 0.05));
+  const dateBlock = fieldBlock('DATE', dateText, fieldTopY + fieldStep, Math.round(leftW * 0.05));
 
   const svg = `<svg width="${leftW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg">
     <rect width="100%" height="100%" fill="#F5EEE0"/>
-    <text x="${pad}" y="${Math.round(canvasH * 0.14)}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.11)}" fill="${lineColor}">001</text>
-    <line x1="${pad}" y1="${Math.round(canvasH * 0.16)}" x2="${leftW - pad}" y2="${Math.round(canvasH * 0.16)}" stroke="${lineColor}" stroke-width="1"/>
+    <text x="${pad}" y="${num001Y}" font-family="${FONT_CN}" font-size="${num001Size}" fill="${lineColor}">001</text>
+    <line x1="${pad}" y1="${num001LineY}" x2="${leftW - pad}" y2="${num001LineY}" stroke="${lineColor}" stroke-width="1"/>
     ${titleSvg}
-    <text x="${pad}" y="${Math.round(canvasH * 0.16 + (titleLines.length) * leftW * 0.155)}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.06)}" fill="${subColor}">${subTitle}</text>
-    <text x="${pad}" y="${fieldY}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.065)}" fill="${labelColor}">LOCATION</text>
-    ${locText ? `<text x="${leftW - pad}" y="${fieldY}" text-anchor="end" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.055)}" fill="${subColor}">${locText}</text>` : ''}
-    <line x1="${pad}" y1="${fieldY + 10}" x2="${leftW - pad}" y2="${fieldY + 10}" stroke="${labelColor}" stroke-width="1"/>
-    <text x="${pad}" y="${Math.round(canvasH * 0.60)}" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.065)}" fill="${labelColor}">DATE</text>
-    ${dateText ? `<text x="${leftW - pad}" y="${Math.round(canvasH * 0.60)}" text-anchor="end" font-family="${FONT_SERIF}" font-size="${Math.round(leftW * 0.055)}" fill="${subColor}">${dateText}</text>` : ''}
-    <line x1="${pad}" y1="${Math.round(canvasH * 0.60) + 10}" x2="${leftW - pad}" y2="${Math.round(canvasH * 0.60) + 10}" stroke="${labelColor}" stroke-width="1"/>
+    ${locBlock}
+    ${dateBlock}
     ${brushSwatch(pad, swatchY, swatchSize, swatch[0])}
     ${brushSwatch(pad + swatchSize + 14, swatchY, swatchSize, swatch[1])}
     ${brushSwatch(pad + (swatchSize + 14) * 2, swatchY, swatchSize, swatch[2])}
@@ -268,12 +289,17 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
 // 背面合成：左上邮编框 + 右上邮票 + 左侧主体线稿 + 右侧留言(从上多排空两格) + 地址最下
 async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
   const { backMessage } = body;
-  const leftHalfW = Math.round(canvasW * 0.44);
+  const leftHalfW = Math.round(canvasW * 0.42);
   const rightX = Math.round(canvasW * 0.50);
 
-  // 左侧线稿(已透明背景)直接铺在明信片底上，按左栏宽高无缝填充（不产生白纸边）
+  // 左侧线稿(已透明背景)直接铺在明信片底上，严格限制在左侧分隔线以内（不越界到右侧）
+  // 分隔线在 canvasW*0.42，故线稿占宽不超过 0.40，left 取 0.02 使右边缘落在 0.42 内
+  const lineW = Math.round(canvasW * 0.38);
+  const lineH = Math.round(canvasH * 0.62);
+  const lineLeft = Math.round(canvasW * 0.02);
+  const lineTop = Math.round(canvasH * 0.18);
   const lineSized = await sharp(lineBuffer)
-    .resize(Math.round(canvasW * 0.42), Math.round(canvasH * 0.70), { fit: 'fill', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(lineW, lineH, { fit: 'fill', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png().toBuffer();
 
   const boxSize = Math.round(canvasW * 0.030);
@@ -333,10 +359,10 @@ async function composeBack({ lineBuffer, body, canvasW, canvasH }) {
   </svg>`;
   const svgBuf = await sharp(Buffer.from(svg)).png().toBuffer();
 
-  // 底线稿放左半（SVG 应为透明底，不遮挡线稿）
+  // 底线稿放左半（SVG 应为透明底，不遮挡线稿），严格限制在左侧分隔线以内
   return await sharp({ create: { width: canvasW, height: canvasH, channels: 4, background: { r: 251, g: 246, b: 236, alpha: 1 } } })
     .composite([
-      { input: lineSized, left: Math.round(canvasW * 0.045), top: Math.round(canvasH * 0.14) },
+      { input: lineSized, left: lineLeft, top: lineTop },
       { input: svgBuf, left: 0, top: 0 },
     ])
     .png().toBuffer();
@@ -388,52 +414,40 @@ async function modelGenerate(body, client, prompt, size) {
 }
 
 // 同步生成接口
-// 用户未填标题时，根据地点/日期/风格拟一个雅致中文标题（含"AI 拟题"语义）
-function inferTitle(body) {
-  if (body.title && String(body.title).trim()) return String(body.title).trim();
-  const loc = (body.location || '').trim();
-  const date = (body.date || '').trim();
-  const theme = (body.theme || body.tone || body.style || '').trim();
-  // 基于风格、地点组合出有氛围感的标题
-  if (loc && date) return `${loc} · ${date}`;
-  if (loc) return `${loc} 时光`;
-  if (date) return `${date} 手记`;
-  if (theme) return `${theme} 插画`;
-  return '时光信笺';
-}
-
 // 从用户原图提取"透明背景黑线"的真实素描线稿（描摹主体轮廓，必基于用户图片，直接画在明信片底上）
 async function extractLineArtFromImage(imgBuf) {
   try {
     const meta = await sharp(imgBuf).metadata();
-    const W = 820;
+    // 用较高分辨率提取，保留细节；再经过合成时的缩放仍能保持线条浓度
+    const W = 900;
     const H = Math.max(1, Math.round((meta.height || 900) * W / (meta.width || 1200)));
-    // 1) 灰度 + 高斯模糊去噪：剔除湖面波纹/树叶等高频噪点，只保留显著对象轮廓
-    const gray = await sharp(imgBuf).resize(W, H).grayscale().blur(0.8).toBuffer();
+    // 1) 灰度（轻模糊，保留主体轮廓，弱化噪点）
+    const gray = await sharp(imgBuf).resize(W, H, { fit: 'fill' }).grayscale().blur(0.7).toBuffer();
     // 2) 边缘检测（Sobel 组合）
     const horiz = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, 0, 1, -2, 0, 2, -1, 0, 1] }).normalise().toBuffer();
     const vert = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, -2, -1, 0, 0, 0, 1, 2, 1] }).normalise().toBuffer();
     // 3) 边缘强度相加 + 归一化
     const edges = await sharp(horiz).composite([{ input: vert, blend: 'add' }]).normalise().toBuffer();
-    // 4) 自适应分位数阈值：只保留最显著的 2% 边缘（显著轮廓/主干），剔除波纹等细碎噪点
+    // 4) 自适应分位数阈值：保留约 55% 较强边缘作为线稿骨架（线条丰富、有造型）
     const { data } = await sharp(edges).greyscale().raw().toBuffer({ resolveWithObject: true });
     const arr = Array.from(data).sort((a, b) => a - b);
     const N = arr.length;
-    const thr = arr[Math.max(0, Math.floor(N * 0.95))];
-    // 5) 构造透明背景黑线：高于阈值的边缘 -> 深棕色线条，其余 -> 全透明
+    const thr = arr[Math.max(0, Math.floor(N * 0.45))];
+    // 5) 构造透明背景纯黑线稿：高于阈值的边缘 -> 纯黑不透明线条（保证合成缩放后依然深色），其余全透明
     const out = Buffer.alloc(N * 4);
     for (let i = 0; i < N; i++) {
       const g = data[i];
-      // 越靠近边缘高亮(g 越大) 线条越实；低于阈值 -> 全透明
-      const a = g >= thr ? Math.min(255, Math.round((g - thr) * 9)) : 0;
-      if (a > 0) {
-        out[i * 4] = 45;      // R 深棕
-        out[i * 4 + 1] = 38;  // G
-        out[i * 4 + 2] = 30;  // B
-        out[i * 4 + 3] = a;   // A
+      if (g >= thr) {
+        out[i * 4] = 26;       // R 深墨（近黑）
+        out[i * 4 + 1] = 22;   // G
+        out[i * 4 + 2] = 18;   // B
+        out[i * 4 + 3] = 255;  // A 完全不透明，缩放/合成不变淡
       }
     }
-    return await sharp(out, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+    return await sharp(out, { raw: { width: W, height: H, channels: 4 } })
+      // 膨胀让线条更连贯、更粗、更有造型（避免断点和过细）
+      .dilate(2)
+      .png().toBuffer();
   } catch (e) {
     console.warn('[extractLineArtFromImage] failed:', e.message);
     return null;
@@ -449,8 +463,8 @@ router.post('/', async (req, res) => {
     const config = new Config();
     const client = new ImageGenerationClient(config, customHeaders);
     body._model = model;
-    // 用户未填标题时，拟一个雅致标题（AI 拟题）
-    body.title = inferTitle(body);
+    // 用户显式填了标题才保留（AI 拟题仅基于主题/风格，绝不混入日期地点；未填则标题留空）
+    body.title = body.title && String(body.title).trim() ? String(body.title).trim() : '';
 
     const isDouble = body.mode === 'POSTCARD' && body.sides === 'FRONT_BACK';
     const { w: canvasW, h: canvasH } = getSize(body.ratio);
