@@ -102,32 +102,6 @@ const store = reactive({
   // 所有用户默认可用的免费模型，通过本地生成代理调用，无需配置 API Key
   FREE_MODELS: [
     {
-      id: 'cfg_free_rumeng_flash_1',
-      name: '入梦 Flash（免费）',
-      provider: 'local',
-      apiFormat: 'image',
-      baseUrl: '',  // 留空表示使用 serverUrl 本地代理，密钥在后端不公开
-      customPath: '',
-      apiKey: 'free',
-      model: '入梦 Flash',
-      modelKey: 'rumeng-flash-1',  // 后端匹配密钥的内部唯一标识
-      imageInput: 'auto',
-      free: true,
-    },
-    {
-      id: 'cfg_free_rumeng_flash_2',
-      name: '入梦 Flash（免费）',
-      provider: 'local',
-      apiFormat: 'image',
-      baseUrl: '',
-      customPath: '',
-      apiKey: 'free',
-      model: '入梦 Flash',
-      modelKey: 'rumeng-flash-2',
-      imageInput: 'auto',
-      free: true,
-    },
-    {
       id: 'cfg_free_gpt_image_2',
       name: 'gpt-image-2（免费）',
       provider: 'local',

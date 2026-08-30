@@ -418,39 +418,59 @@ async function modelGenerate(body, client, prompt, size) {
   return Buffer.from(b64, 'base64');
 }
 
-// OpenAI 兼容生图调用（chat/completions 格式出图），密钥由后端内置，不暴露给前端
-// gpt-image-2 等 OpenAI 图像模型通过 chat/completions 返回 content 数组中的 base64 图片
+// 从 endpoint 中抽取 base（去掉 /v1/chat/completions、/chat/completions、/v1/images/edits、/v1/images/generations 等后缀）
+function extractBase(endpoint) {
+  return String(endpoint || '')
+    .replace(/\/v1\/chat\/completions$/i, '')
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/v1\/images\/edits$/i, '')
+    .replace(/\/v1\/images\/generations$/i, '')
+    .replace(/\/images\/edits$/i, '')
+    .replace(/\/images\/generations$/i, '')
+    .replace(/\/+$/, '');
+}
+
+// 规范化传给 OpenAI 图像接口的 size（仅接受固定档位；默认 1024x1024）
+function normalizeImageSize(size) {
+  const s = String(size || '').replace(/[x×]/i, 'x');
+  const m = s.match(/^(\d+)x(\d+)$/i);
+  if (m) {
+    const w = parseInt(m[1], 10);
+    const h = parseInt(m[2], 10);
+    // OpenAI 图像接口支持 1024x1024 / 1024x1536 / 1536x1024 / auto
+    if (w === 1024 && h === 1024) return '1024x1024';
+    if (w === 1024 && h === 1536) return '1024x1536';
+    if (w === 1536 && h === 1024) return '1536x1024';
+    if (w === 1536 && h === 1792) return '1536x1792';
+    if (w === 1792 && h === 1536) return '1792x1536';
+    // 其它尺寸映射到比例最接近的档位
+    if (h > w) return '1024x1536';
+    return '1536x1024';
+  }
+  return '1024x1024';
+}
+
+// OpenAI 兼容生图调用：一律走标准 image 端点（文生图 /v1/images/generations，图生图 /v1/images/edits）
+// 密钥由后端内置，不暴露给前端
 async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   const { model, apiKey, endpoint } = freeModel;
-  const url = endpoint || `${(freeModel.baseUrl || '').replace(/\/$/, '')}/v1/chat/completions`;
-  const messages = [];
-  // 图生图：把用户图片以 image_url 形式传入（OpenAI 多模态格式）
+  const base = extractBase(endpoint) || (freeModel.baseUrl || '').replace(/\/$/, '');
+  // 图生图：把用户图片以 images:[{image_url}] 形式传入（OpenAI 图像模型标准格式）
+  let inputData = null;
   if (imageUrl) {
     try {
-      const processed = await processImageUrl(imageUrl);
-      if (processed) {
-        messages.push({ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: processed } }] });
-      } else {
-        messages.push({ role: 'user', content: prompt });
-      }
+      inputData = await processImageUrl(imageUrl);
     } catch (imgErr) {
       console.error('[Generation] openai image input error:', imgErr.message);
-      messages.push({ role: 'user', content: prompt });
+      inputData = null;
     }
-  } else {
-    messages.push({ role: 'user', content: prompt });
   }
-  const body = {
-    model,
-    messages,
-    stream: false,
-    max_tokens: freeModel.kind === 'chat' ? 4096 : 4096,
-  };
-  // gpt-image 等 OpenAI 图像模型需带 modalities 声明输出图片；文本类模型(入梦Flash)不带
-  if (freeModel.kind !== 'chat') {
-    body.modalities = ['text', 'image'];
-    body.response_format = { type: 'b64_json' };
-  }
+  // 统一走 /v1/images/generations（入梦Flash等中转站仅支持此端点）
+  // 图生图时通过 image 参数传入（而非 images 数组；某些中转站用 image 字段做图生图）
+  const body = inputData
+    ? { model, prompt, image: inputData, size: normalizeImageSize(size), n: 1 }
+    : { model, prompt, size: normalizeImageSize(size), n: 1 };
+  const url = `${base}/v1/images/generations`;
   let res;
   try {
     res = await fetch(url, {
