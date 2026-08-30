@@ -659,62 +659,120 @@ async function extractLineArtFromImage(imgBuf) {
 }
 
 // 对原图进行风格化处理（保证忠实于原图，同时实现手绘艺术效果）
-// 替代 AI 图生图（入梦 Pro 走 chat/completions 不支持真正图生图）
 async function applyArtStyle(imgBuf, style, paperTexture, W, H) {
   try {
-    // 基础调整：统一尺寸 + 轻微锐化保留细节
-    let pipeline = sharp(imgBuf).resize(W, H, { fit: 'fill' });
-    // 根据风格调整
+    // 纸张底色
+    const paperColors = {
+      rough: { r: 242, g: 235, b: 220, a: 255 },
+      linen: { r: 248, g: 244, b: 235, a: 255 },
+      watercolor_paper: { r: 250, g: 247, b: 240, a: 255 },
+    };
+    const paper = paperColors[paperTexture] || null;
+    // 先做风格处理
+    let styled;
+    const base = sharp(imgBuf).resize(W, H, { fit: 'fill' });
     switch (style) {
+      case 'sketch': {
+        // 素描：边缘检测 + 反色（白底黑线）+ 高对比
+        const edges = await base
+          .greyscale()
+          .blur(0.5)
+          .raw()
+          .toBuffer();
+        const { data, info } = await base.greyscale().blur(0.5).raw().toBuffer({ resolveWithObject: true });
+        const w = info.width, h = info.height;
+        const grey = new Float32Array(w * h);
+        for (let i = 0; i < w * h; i++) grey[i] = data[i];
+        const out = Buffer.alloc(w * h * 4);
+        let maxE = 0;
+        const edgeVal = new Float32Array(w * h);
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            const idx = y * w + x;
+            const gx = (grey[idx - w + 1] + 2 * grey[idx + 1] + grey[idx + w + 1]) - (grey[idx - w - 1] + 2 * grey[idx - 1] + grey[idx + w - 1]);
+            const gy = (grey[idx + w - 1] + 2 * grey[idx + w] + grey[idx + w + 1]) - (grey[idx - w - 1] + 2 * grey[idx - w] + grey[idx - w + 1]);
+            edgeVal[idx] = Math.sqrt(gx * gx + gy * gy);
+            if (edgeVal[idx] > maxE) maxE = edgeVal[idx];
+          }
+        }
+        // 硬二值：强边缘=黑线，其余=白纸
+        const thresh = maxE * 0.25;
+        for (let i = 0; i < w * h; i++) {
+          const o = i * 4;
+          if (edgeVal[i] > thresh) {
+            out[o] = 30; out[o + 1] = 30; out[o + 2] = 30; out[o + 3] = 255;
+          } else {
+            out[o] = 252; out[o + 1] = 250; out[o + 2] = 245; out[o + 3] = 255;
+          }
+        }
+        styled = sharp(out, { raw: { width: w, height: h, channels: 4 } }).dilate(1);
+        break;
+      }
+      case 'chinese_ink': {
+        // 水墨：灰度 + 高对比 + 深褐调 + 柔化
+        styled = base
+          .greyscale()
+          .normalize()
+          .blur(0.4)
+          .modulate({ brightness: 1.05 })
+          .tint({ r: 170, g: 150, b: 110 });
+        break;
+      }
+      case 'retro_print': {
+        // 复古：高饱和 + 对比 + 暖色调 + 暗角
+        styled = base
+          .modulate({ brightness: 0.95, saturation: 1.4 })
+          .tint({ r: 220, g: 190, b: 150 })
+          .normalize();
+        break;
+      }
+      case 'colored_pencil': {
+        // 彩铅：强锐化 + 高饱和 + 高对比 + 轻纹理
+        styled = base
+          .modulate({ saturation: 1.25, brightness: 1.02 })
+          .sharpen({ sigma: 1.2 })
+          .normalize();
+        break;
+      }
       case 'hand_drawn_watercolor':
-        // 水彩：轻微降低饱和度、提亮、柔化
-        pipeline = pipeline.modulate({ brightness: 1.05, saturation: 0.85 }).blur(0.3);
+      default: {
+        // 水彩：柔化 + 色彩量化（模拟颜料扩散）+ 纸张晕染
+        const watercolorBuf = await base
+          .blur(1.2)
+          .modulate({ brightness: 1.08, saturation: 0.88 })
+          .png()
+          .toBuffer();
+        // 二次柔化模拟水彩扩散
+        styled = sharp(watercolorBuf).blur(0.6).modulate({ brightness: 1.02 });
         break;
-      case 'sketch':
-        // 素描：灰度高对比边缘
-        pipeline = pipeline.greyscale().normalize().convolve({ width: 3, height: 3, kernel: [-1, -1, -1, -1, 8, -1, -1, -1, -1] });
-        break;
-      case 'chinese_ink':
-        // 水墨：灰度高对比 + 轻微 sepia
-        pipeline = pipeline.greyscale().normalize().modulate({ brightness: 1.1 }).tint({ r: 180, g: 160, b: 120 });
-        break;
-      case 'retro_print':
-        // 复古印刷：提高饱和度与对比度
-        pipeline = pipeline.modulate({ brightness: 1.0, saturation: 1.3, hue: 5 }).normalize();
-        break;
-      case 'colored_pencil':
-        // 彩铅：轻微锐化 + 饱和度略增
-        pipeline = pipeline.modulate({ saturation: 1.15 }).sharpen({ sigma: 0.8 });
-        break;
-      default:
-        pipeline = pipeline.modulate({ brightness: 1.02 });
-    }
-    const styled = await pipeline.toBuffer();
-    // 添加纸张纹理（通过 blend 低透明度噪点模拟）
-    if (paperTexture && paperTexture !== 'none') {
-      const noiseBuf = await sharp({
-        create: { width: W, height: H, channels: 4, background: { r: 128, g: 128, b: 128, alpha: 0 } }
-        // 用随机噪点模拟纸张纹理
-      }).raw().toBuffer();
-      // 简化：用纯色半透明叠加模拟纸张底色
-      const paperColors = {
-        rough: { r: 245, g: 240, b: 230 },
-        linen: { r: 250, g: 248, b: 242 },
-        watercolor_paper: { r: 252, g: 250, b: 245 },
-      };
-      const pc = paperColors[paperTexture] || null;
-      if (pc) {
-        // 叠加纸张底色（低透明度）
-        const paperLayer = await sharp({
-          create: { width: W, height: H, channels: 4, background: { r: pc.r, g: pc.g, b: pc.b, alpha: 1 } }
-        }).png().toBuffer();
-        return await sharp(styled).composite([{ input: paperLayer, blend: 'overlay', opacity: 0.15 }]).png().toBuffer();
       }
     }
-    return await sharp(styled).png().toBuffer();
+    let result = await styled.toBuffer();
+    // 叠加纸张纹理（显著）
+    if (paper) {
+      const paperLayer = await sharp({
+        create: { width: W, height: H, channels: 4, background: paper }
+      }).png().toBuffer();
+      // 纸张颗粒纹理（随机噪点）
+      const noisePixels = Buffer.alloc(W * H * 4);
+      for (let i = 0; i < W * H; i++) {
+        const n = (Math.random() - 0.5) * 30;
+        noisePixels[i * 4] = 128 + n;
+        noisePixels[i * 4 + 1] = 128 + n;
+        noisePixels[i * 4 + 2] = 128 + n;
+        noisePixels[i * 4 + 3] = 25;
+      }
+      const noiseLayer = await sharp(noisePixels, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+      result = await sharp(result)
+        .composite([
+          { input: paperLayer, blend: 'overlay', opacity: 0.2 },
+          { input: noiseLayer, blend: 'overlay', opacity: 0.5 }
+        ])
+        .png().toBuffer();
+    }
+    return result;
   } catch (e) {
     console.warn('[applyArtStyle] failed:', e.message);
-    // 失败时返回原图缩放
     return sharp(imgBuf).resize(W, H, { fit: 'fill' }).png().toBuffer();
   }
 }
