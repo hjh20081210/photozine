@@ -21,6 +21,13 @@ const DEFAULT_FREE_MODELS = {
     apiKey: 'sk-GjeCPWiTENHjn18RA51Uax6xjgQgbUfD4ixgXRom6p1dVcKI',
     kind: 'chat',
   },
+  'seedream-4-5': {
+    name: 'Seedream 4.5',
+    model: 'doubao-seedream-4-5-251128',
+    endpoint: 'https://api.coze.cn',
+    apiKey: '',
+    kind: 'sdk',
+  },
 };
 
 const FILE = '/tmp/free-models.json';

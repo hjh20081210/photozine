@@ -69,8 +69,8 @@ const MODEL_MAP = {
 // 注意：librsvg/pango 对字体「名字」的解析不稳定（LXGWWenKai-Regular 名字匹配不到），
 // 因此优先使用字体文件的「绝对路径」来确保中文一定能渲染，再回退到系统文泉驿。
 // 霞鹜文楷已安装到系统，使用其 family name（librsvg/pango 按 family name，而非字体文件路径匹配）
-const FONT_SERIF = "'Liberation Serif', 'DejaVu Serif', serif";
-const FONT_CN = "'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', sans-serif";
+const FONT_SERIF = "'LXGW WenKai', 'WenQuanYi Micro Hei', sans-serif";
+const FONT_CN = "'LXGW WenKai', 'WenQuanYi Micro Hei', sans-serif";
 
 // 中文标题 -> 英文标题：内置常用词汇字典 + 英文原样保留 + 拼音回退
 const CN_EN_DICT = {
@@ -429,8 +429,9 @@ async function processImageUrl(imageUrl) {
 }
 
 async function modelGenerate(body, client, prompt, size) {
-  // 正面始终用 Seedream 模型生成，保证忠实原图构图
-  const generateReq = { prompt, model: DEFAULT_MODEL, size, watermark: false, responseFormat: 'b64_json' };
+  // 正面用 Seedream 模型生成，保证忠实原图构图
+  const model = body._model || DEFAULT_MODEL;
+  const generateReq = { prompt, model, size, watermark: false, responseFormat: 'b64_json' };
   if (body.imageUrl) {
     try {
       const processed = await processImageUrl(body.imageUrl);
@@ -442,7 +443,7 @@ async function modelGenerate(body, client, prompt, size) {
       console.error('[Generation] image error:', imgErr.message);
     }
   }
-  console.log(`[Generation] model: ${DEFAULT_MODEL}, size: ${size}, prompt length: ${prompt.length}`);
+  console.log(`[Generation] model: ${model}, size: ${size}, prompt length: ${prompt.length}`);
   const response = await client.generate(generateReq);
   const helper = client.getResponseHelper(response);
   if (!helper.success) {
@@ -841,11 +842,25 @@ router.post('/', async (req, res) => {
     body._palette = palette;
     console.log('[Generation] palette:', palette);
 
-    // ---- 1) 正面：始终用 coze SDK（Seedream）生成插画素材 ----
-    // Seedream 支持图生图，能忠实还原原图构图 + 艺术风格
+    // ---- 1) 正面：根据 freeModel.kind 选择生成方式 ----
+    // kind: 'sdk' → Seedream SDK（忠实原图构图 + 艺术风格）
+    // kind: 'chat' → 入梦 Pro 等多模态 chat 模型
+    // kind: 'image' → gpt-image-2 等 OpenAI 兼容图像模型
     const [frontArtBuf, extractedBackLine] = await Promise.all([
       (async () => {
-        return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
+        if (freeModel && freeModel.kind === 'sdk') {
+          // Seedream SDK
+          return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
+        } else if (freeModel && freeModel.kind === 'chat') {
+          // 入梦 Pro 等多模态 chat 模型
+          return generateViaOpenAI(freeModel, buildFrontArtPrompt(body), [canvasW - Math.round(canvasW * 0.35), canvasH], body.imageUrl);
+        } else if (freeModel && freeModel.kind === 'image') {
+          // gpt-image-2 等 OpenAI 兼容图像模型
+          return generateViaOpenAI(freeModel, buildFrontArtPrompt(body), [canvasW - Math.round(canvasW * 0.35), canvasH], body.imageUrl);
+        } else {
+          // 默认用 Seedream SDK
+          return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
+        }
       })(),
       (async () => {
         if (!isDouble || !body.imageUrl) return null;
@@ -864,7 +879,13 @@ router.post('/', async (req, res) => {
     // ---- 2) 背面（仅双面）：优先用原图线稿，否则 AI 生成 ----
     let backLineBuf = extractedBackLine;
     if (isDouble && !backLineBuf) {
-      backLineBuf = await modelGenerate(body, client, buildBackLinePrompt(body), `${Math.round(canvasW * 0.6)}x${canvasH}`);
+      if (freeModel && freeModel.kind === 'sdk') {
+        backLineBuf = await modelGenerate(body, client, buildBackLinePrompt(body), `${Math.round(canvasW * 0.6)}x${canvasH}`);
+      } else if (freeModel && (freeModel.kind === 'chat' || freeModel.kind === 'image')) {
+        backLineBuf = await generateViaOpenAI(freeModel, buildBackLinePrompt(body), [Math.round(canvasW * 0.6), canvasH], body.imageUrl);
+      } else {
+        backLineBuf = await modelGenerate(body, client, buildBackLinePrompt(body), `${Math.round(canvasW * 0.6)}x${canvasH}`);
+      }
     }
 
     // ---- 3) sharp 合成正/背面 ----
