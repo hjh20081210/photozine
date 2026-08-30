@@ -791,39 +791,46 @@ function onCropConfirm(e) {
 
   uni.showLoading({ title: '上传中...' })
 
-  // 先读 base64 保证预览不依赖网络
-  fileToResultByPath(croppedPath).then(img => {
-    photo.value = { ...img, path: croppedPath }
-  }).catch(() => {
-    photo.value = { path: croppedPath, base64: '', mime: 'image/jpeg', size: 0 }
-  })
+  // H5: 先压缩降采样，避免大图卡死；压缩失败则用原图
+  let proceed = (usePath) => {
+    // 先读 base64 保证预览不依赖网络
+    fileToResultByPath(usePath).then(img => {
+      photo.value = { ...img, path: usePath }
+    }).catch(() => {
+      photo.value = { path: usePath, base64: '', mime: 'image/jpeg', size: 0 }
+    })
 
-  // 上传到后端
-  uni.uploadFile({
-    url: store.serverUrl + '/api/file/upload',
-    filePath: croppedPath,
-    name: 'file',
-    success: (res) => {
-      try {
-        const data = JSON.parse(res.data)
-        if (data.code === 200) {
-          const fullUrl = store.serverUrl + data.data.url
-          photo.value = { ...(photo.value || {}), url: fullUrl }
-          uni.showToast({ title: '上传成功', icon: 'success', duration: 600 })
-        } else {
-          console.warn('上传失败', data.msg)
+    // 上传到后端
+    uni.uploadFile({
+      url: store.serverUrl + '/api/file/upload',
+      filePath: usePath,
+      name: 'file',
+      success: (res) => {
+        try {
+          const data = JSON.parse(res.data)
+          if (data.code === 200) {
+            const fullUrl = store.serverUrl + data.data.url
+            photo.value = { ...(photo.value || {}), url: fullUrl }
+            uni.showToast({ title: '上传成功', icon: 'success', duration: 600 })
+          } else {
+            console.warn('上传失败', data.msg)
+          }
+        } catch (err) {
+          console.warn('解析上传响应失败', err)
         }
-      } catch (e) {
-        console.warn('解析上传响应失败', e)
+      },
+      fail: (err) => {
+        console.error('上传网络异常', err)
+        // 上传失败不影响本地预览
+      },
+      complete: () => {
+        uni.hideLoading()
       }
-    },
-    fail: (err) => {
-      console.error('上传网络异常', err)
-      // 上传失败不影响本地预览
-    },
-    complete: () => {
-      uni.hideLoading()
-    }
+    })
+  }
+
+  compressImageForUpload(croppedPath).then((compressed) => {
+    proceed(compressed && compressed.url ? compressed.url : croppedPath)
   })
 }
 
@@ -839,6 +846,45 @@ function fileToResult(file) {
     fr.onerror = () => reject(new Error('读取图片失败'))
     fr.readAsDataURL(file)
   })
+}
+
+// H5: 用 canvas 将超大图片降采样压缩，避免大图上传/预览卡死
+function compressImageForUpload(filePath) {
+  // #ifdef H5
+  return fetch(filePath)
+    .then((res) => res.blob())
+    .then((blob) => createImageBitmap(blob))
+    .then((bmp) => {
+      const MAX = 2560
+      let width = bmp.width
+      let height = bmp.height
+      const maxSide = Math.max(width, height)
+      if (maxSide > MAX) {
+        const scale = MAX / maxSide
+        width = Math.round(width * scale)
+        height = Math.round(height * scale)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(bmp, 0, 0, width, height)
+      bmp.close && bmp.close()
+      return new Promise((resolve) => {
+        canvas.toBlob((b) => {
+          const url = URL.createObjectURL(b)
+          resolve({ blob: b, url, mime: (b && b.type) || 'image/jpeg' })
+        }, 'image/jpeg', 0.85)
+      })
+    })
+    .catch((e) => {
+      console.warn('H5 压缩图片失败，使用原图', e)
+      return Promise.resolve(null)
+    })
+  // #endif
+  // #ifndef H5
+  return Promise.resolve(null)
+  // #endif
 }
 
 // 通过临时路径读取图片（uni.chooseImage 返回的是路径，不是 File 对象）

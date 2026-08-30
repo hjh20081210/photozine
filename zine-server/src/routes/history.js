@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { loadDB, findByToken } from './auth-db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,10 +39,25 @@ function saveHistory(arr) {
   }
 }
 
-// GET /api/history —— 历史列表（倒序：最新在前）
+// 从 x-session 解析当前登录用户 id；未登录/过期返回 null（游客）
+function resolveUserId(req) {
+  try {
+    const tok = (req.headers['x-session'] || '').toString().trim();
+    if (!tok) return null;
+    const db = loadDB();
+    const user = findByToken(db, tok);
+    return user ? user.id : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// GET /api/history —— 仅返回当前登录用户自己的历史（倒序：最新在前）
 router.get('/', (req, res) => {
   try {
+    const uid = resolveUserId(req);
     const list = loadHistory()
+      .filter((x) => (x.userId || '') === (uid || ''))
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     res.json({ code: 200, msg: 'ok', data: list });
   } catch (e) {
@@ -49,16 +65,18 @@ router.get('/', (req, res) => {
   }
 });
 
-// POST /api/history —— 保存一条历史
+// POST /api/history —— 保存一条历史（记录当前用户）
 router.post('/', (req, res) => {
   try {
     const body = req.body || {};
     if (!body.frontUrl && !body.backUrl) {
       return res.status(400).json({ code: 400, msg: '缺少图片地址', data: null });
     }
+    const uid = resolveUserId(req);
     const item = {
       id: body.id || `h_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       taskId: body.taskId || null,
+      userId: uid || null,
       frontUrl: body.frontUrl || '',
       backUrl: body.backUrl || null,
       thumbUrl: body.thumbUrl || body.frontUrl || '',
@@ -85,13 +103,14 @@ router.post('/', (req, res) => {
   }
 });
 
-// DELETE /api/history/:id —— 删除一条
+// DELETE /api/history/:id —— 仅删除当前用户自己的记录
 router.delete('/:id', (req, res) => {
   try {
     const id = req.params.id;
+    const uid = resolveUserId(req);
     let list = loadHistory();
     const before = list.length;
-    list = list.filter((x) => x.id !== id);
+    list = list.filter((x) => x.id !== id || (x.userId || '') !== (uid || ''));
     saveHistory(list);
     res.json({ code: 200, msg: 'ok', data: { deleted: before !== list.length } });
   } catch (e) {
