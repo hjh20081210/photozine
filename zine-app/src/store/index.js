@@ -127,6 +127,19 @@ const store = reactive({
       imageInput: 'auto',
       free: true,
     },
+    {
+      id: 'cfg_free_seedream_4_5',
+      name: 'Seedream 4.5（免费）',
+      provider: 'local',
+      apiFormat: 'image',
+      baseUrl: '',
+      customPath: '',
+      apiKey: 'free',
+      model: 'doubao-seedream-4-5-251128',
+      modelKey: 'seedream-4-5',
+      imageInput: 'auto',
+      free: true,
+    },
   ],
 
   /* ============ 加载 & 持久化 ============ */
