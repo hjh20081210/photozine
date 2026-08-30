@@ -583,8 +583,16 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
     }
     if (img.type === 'svg') {
       // SVG 文本 → sharp 栅格化为 PNG Buffer
-      const png = await sharp(Buffer.from(img.value, 'utf8')).png().toBuffer();
-      return png;
+      try {
+        const png = await sharp(Buffer.from(img.value, 'utf8')).png().toBuffer();
+        return png;
+      } catch (svgErr) {
+        console.error(`[Generation] SVG rendering failed: ${svgErr.message}`);
+        // SVG 渲染失败时，返回一个占位图
+        const placeholderSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1067" viewBox="0 0 800 1067"><rect width="800" height="1067" fill="#f5f0e8"/><text x="400" y="533" text-anchor="middle" fill="#8b7355" font-size="24" font-family="sans-serif">AI 生成失败，请重试</text></svg>`;
+        const png = await sharp(Buffer.from(placeholderSvg, 'utf8')).png().toBuffer();
+        return png;
+      }
     }
     return Buffer.from(img.value, 'base64');
   }
