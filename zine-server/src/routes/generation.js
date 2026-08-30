@@ -455,7 +455,7 @@ function normalizeImageSize(size) {
 async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   const { model, apiKey, endpoint } = freeModel;
   const base = extractBase(endpoint) || (freeModel.baseUrl || '').replace(/\/$/, '');
-  // 图生图：把用户图片以 images:[{image_url}] 形式传入（OpenAI 图像模型标准格式）
+  // 图生图：把用户图片以 images:[{image_url}] 形式传入（OpenAI 标准格式）
   let inputData = null;
   if (imageUrl) {
     try {
@@ -465,12 +465,15 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
       inputData = null;
     }
   }
-  // 统一走 /v1/images/generations（入梦Flash等中转站仅支持此端点）
-  // 图生图时通过 image 参数传入（而非 images 数组；某些中转站用 image 字段做图生图）
-  const body = inputData
-    ? { model, prompt, image: inputData, size: normalizeImageSize(size), n: 1 }
-    : { model, prompt, size: normalizeImageSize(size), n: 1 };
-  const url = `${base}/v1/images/generations`;
+  // 图生图走 /v1/images/edits（带 images 数组），文生图走 /v1/images/generations
+  let url, body;
+  if (inputData) {
+    url = `${base}/v1/images/edits`;
+    body = { model, prompt, images: [{ image_url: inputData }], size: normalizeImageSize(size), n: 1 };
+  } else {
+    url = `${base}/v1/images/generations`;
+    body = { model, prompt, size: normalizeImageSize(size), n: 1 };
+  }
   let res;
   try {
     res = await fetch(url, {
