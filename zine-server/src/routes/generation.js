@@ -190,7 +190,8 @@ function buildFrontArtPrompt(body) {
   const stylePrompt = STYLE_PROMPTS[style] || STYLE_FALLBACK;
   const textureMap = { linen: '亚麻纸纹', kraft: '牛皮纸纹', watercolor: '水彩纸纹', rice: '宣纸纹', craft: '手工纸纹' };
   const textureText = paperTexture && paperTexture !== 'none' ? `纸张纹理为${textureMap[paperTexture] || paperTexture}，画面带有该纸张的质感与底色。` : '';
-  return `根据参考照片创作插画。保留原图的构图、视角、主体、色彩与明暗。转化为${stylePrompt}，生动自然不死板。${textureText}直接返回完整SVG代码（以<svg>开头），不要HTML、CSS或markdown。画面中不要出现任何文字、字母、数字或符号。`.replace(/\s+/g, ' ').trim();
+  const titleText = title ? `主题为 "${esc(String(title).replace(/\n/g, ' '))}"` : '';
+  return `仔细观察参考照片，创作一幅插画：必须严格保留原照片的构图、视角、主体位置、远近层次和色彩关系。将照片中的主景物（如帆船、森林木屋、海边、山峰、马匹等）转化为${stylePrompt}。插画必须与原片场景高度一致、可辨认，不能凭空创作不存在的元素，不能改变原片的构图布局。画面带不规则水彩淡墨晕染毛边，颜料扩散斑驳水痕，半透明水彩质感，同色系柔和低饱和，边缘留白。${textureText}${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`.replace(/\s+/g, ' ').trim();
 }
 
 // 正面合成：左侧文字信息栏（DOM 精确排版）+ 右侧插画
@@ -463,12 +464,12 @@ function normalizeImageSize(size) {
 // kind 'chat'  → 走完整 endpoint URL，以 chat 多模态 messages 传图（content 数组含 image_url）
 async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   const { model, apiKey, endpoint, kind } = freeModel;
-  // 图生图：把用户图片转 base64 data URL（chat 类模型压缩到 300x400 避免 413 请求体过大）
+  // 图生图：把用户图片转 base64 data URL（chat 类模型压缩到 600x800 保留足够细节）
   let inputData = null;
   if (imageUrl) {
     try {
       if (kind === 'chat') {
-        // chat 类模型：用 sharp 压缩图片到 300x400，避免请求体过大被反向代理拒绝
+        // chat 类模型：用 sharp 压缩图片到 600x800，保留足够细节让模型理解原图
         const sharp = (await import('sharp')).default;
         const fs = (await import('fs')).default;
         const path = (await import('path')).default;
@@ -476,11 +477,11 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
         let imgBuf;
         if (isLocalPath) {
           const filePath = path.join('/tmp/zine-upload', path.basename(imageUrl));
-          imgBuf = await sharp(filePath).resize(300, 400, { fit: 'fill' }).jpeg({ quality: 70 }).toBuffer();
+          imgBuf = await sharp(filePath).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 75 }).toBuffer();
         } else {
           const raw = await fetch(imageUrl);
           const ab = await raw.arrayBuffer();
-          imgBuf = await sharp(Buffer.from(ab)).resize(300, 400, { fit: 'fill' }).jpeg({ quality: 70 }).toBuffer();
+          imgBuf = await sharp(Buffer.from(ab)).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 75 }).toBuffer();
         }
         inputData = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
       } else {
@@ -496,7 +497,7 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
     // chat 类模型（如入梦 Pro）：用完整 endpoint URL
     // 明确要求返回完整 SVG（避免 HTML/CSS），增大 max_tokens 防截断
     url = String(endpoint || '').replace(/\/$/, '');
-    const svgPrompt = `${prompt}。要求：直接返回完整的SVG代码（以<svg>开头），不要返回HTML、CSS、markdown代码块或其他格式。SVG宽度600，高度400。`;
+    const svgPrompt = `${prompt}。要求：直接返回完整的SVG代码（以<svg>开头），不要返回HTML、CSS、markdown代码块或其他格式。SVG宽度800，高度1067（竖版3:4比例，与明信片画布比例一致）。`;
     const content = inputData
       ? [{ type: 'text', text: svgPrompt }, { type: 'image_url', image_url: { url: inputData } }]
       : [{ type: 'text', text: svgPrompt }];
@@ -543,7 +544,12 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   // 针对 chat 类模型，从多模态 content 中提取图片或 SVG
   if (kind === 'chat') {
     const img = extractImageBase64(json);
-    if (!img) throw new Error('模型接口未返回图片数据');
+    if (!img) {
+      // 调试：记录模型返回的内容以便排查
+      const content = json?.choices?.[0]?.message?.content;
+      console.error('[Generation] 模型返回内容片段:', typeof content === 'string' ? content.slice(0, 500) : JSON.stringify(content).slice(0, 500));
+      throw new Error('模型接口未返回图片数据');
+    }
     if (img.type === 'url') {
       const b = await fetchBase64(img.value);
       return Buffer.from(b);
@@ -810,22 +816,21 @@ router.post('/', async (req, res) => {
     console.log('[Generation] palette:', palette);
 
     // ---- 1) 正面：生成插画素材 ----
-    // chat 类模型（入梦 Pro）不支持真正图生图，改用 sharp 风格化处理原图（保证忠实）
-    // image 类模型（gpt-image-2）走 AI 生成
+    // chat 类模型（入梦 Pro）走 AI 生成（支持图生图）
+    // image 类模型（gpt-image-2）走 modelGenerate
     const isChatModel = freeModel && freeModel.kind === 'chat';
     const [frontArtBuf, extractedBackLine] = await Promise.all([
       (async () => {
-        if (isChatModel && body.imageUrl) {
-          // chat 模型：对原图做 sharp 风格化（忠实于原图）
-          try {
-            const imgData = await processImageUrl(body.imageUrl);
-            if (imgData) {
-              const imgBuf = Buffer.from(imgData.split(',')[1], 'base64');
-              return await applyArtStyle(imgBuf, body.style, body.paperTexture, canvasW - Math.round(canvasW * 0.35), canvasH);
-            }
-          } catch (e) { /* ignore */ }
+        // chat 模型：走 AI 生成（入梦 Pro 支持图生图）
+        if (isChatModel) {
+          const freeModelMap = getFreeModelMap();
+          const fm = freeModelMap[body.provider?.modelKey || body.provider?.model];
+          if (fm) {
+            const [w, h] = `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`.split('x').map(Number);
+            return await generateViaOpenAI(fm, buildFrontArtPrompt(body), [w, h], body.imageUrl);
+          }
         }
-        // image 模型 或 无图：走 AI 生成
+        // image 模型 或 无免费模型：走 AI 生成
         return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
       })(),
       (async () => {
