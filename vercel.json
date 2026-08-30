@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://photozine-backend.onrender.com/api/$1"
+      "destination": "https://hjh20081210-photozine.hf.space/api/$1"
     },
     {
       "source": "/(.*)",
