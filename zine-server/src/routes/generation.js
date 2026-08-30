@@ -563,7 +563,7 @@ async function extractLineArtFromImage(imgBuf) {
 router.post('/', async (req, res) => {
   try {
     const body = req.body || {};
-    const modelKey = body.provider?.model || body.model || 'gpt-image-2';
+    const modelKey = body.provider?.modelKey || body.provider?.model || body.model || 'gpt-image-2';
     // 命中内置免费模型（OpenAI 兼容 chat/completions），走 generateViaOpenAI；否则走 coze SDK
     let freeModel = getFreeModelMap()[modelKey] || null;
     const model = freeModel ? freeModel.model : (MODEL_MAP[modelKey] || DEFAULT_MODEL);

@@ -987,6 +987,7 @@ async function onGenerate() {
         baseUrl: activeCfg.baseUrl,
         apiKey: activeCfg.apiKey,
         model: activeCfg.model,
+        modelKey: activeCfg.modelKey,
         imageInput: activeCfg.imageInput,
       },
     }
