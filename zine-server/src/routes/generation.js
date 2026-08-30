@@ -464,12 +464,12 @@ function normalizeImageSize(size) {
 // kind 'chat'  → 走完整 endpoint URL，以 chat 多模态 messages 传图（content 数组含 image_url）
 async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   const { model, apiKey, endpoint, kind } = freeModel;
-  // 图生图：把用户图片转 base64 data URL（chat 类模型压缩到 600x800 保留足够细节）
+  // 图生图：把用户图片转 base64 data URL（chat 类模型压缩到 320x427 平衡质量与速度）
   let inputData = null;
   if (imageUrl) {
     try {
       if (kind === 'chat') {
-        // chat 类模型：用 sharp 压缩图片到 600x800，保留足够细节让模型理解原图
+        // chat 类模型：用 sharp 压缩图片到 400x533（3:4比例），加速模型处理
         const sharp = (await import('sharp')).default;
         const fs = (await import('fs')).default;
         const path = (await import('path')).default;
@@ -477,11 +477,11 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
         let imgBuf;
         if (isLocalPath) {
           const filePath = path.join('/tmp/zine-upload', path.basename(imageUrl));
-          imgBuf = await sharp(filePath).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 75 }).toBuffer();
+          imgBuf = await sharp(filePath).resize(320, 427, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 60 }).toBuffer();
         } else {
           const raw = await fetch(imageUrl);
           const ab = await raw.arrayBuffer();
-          imgBuf = await sharp(Buffer.from(ab)).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 75 }).toBuffer();
+          imgBuf = await sharp(Buffer.from(ab)).resize(320, 427, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 60 }).toBuffer();
         }
         inputData = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
       } else {
@@ -515,7 +515,7 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   }
   let res;
   try {
-    // 设置 fetch 超时 120 秒（入梦 Pro 需要约 66 秒）
+    // 设置 fetch 超时 120 秒（入梦 Pro 处理时间不稳定，需留足余量）
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000);
     res = await fetch(url, {
