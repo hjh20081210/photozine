@@ -624,18 +624,18 @@ async function extractLineArtFromImage(imgBuf) {
     // 用较高分辨率提取，保留细节；再经过合成时的缩放仍能保持线条浓度
     const W = 900;
     const H = Math.max(1, Math.round((meta.height || 900) * W / (meta.width || 1200)));
-    // 1) 灰度（轻模糊，保留主体轮廓，弱化噪点）
-    const gray = await sharp(imgBuf).resize(W, H, { fit: 'fill' }).grayscale().blur(0.3).toBuffer();
-    // 2) 边缘检测（Sobel 组合）
-    const horiz = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, 0, 1, -2, 0, 2, -1, 0, 1] }).normalise().toBuffer();
-    const vert = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, -2, -1, 0, 0, 0, 1, 2, 1] }).normalise().toBuffer();
-    // 3) 边缘强度相加 + 归一化
-    const edges = await sharp(horiz).composite([{ input: vert, blend: 'add' }]).normalise().toBuffer();
-    // 4) 自适应分位数阈值：保留约 35% 较强边缘作为线稿骨架（清晰、有造型、不糊）
+    // 1) 灰度（较强模糊，弱化噪点，保留主体轮廓）
+    const gray = await sharp(imgBuf).resize(W, H, { fit: 'fill' }).grayscale().blur(0.5).toBuffer();
+    // 2) 边缘检测（Sobel 组合，不做 normalise 避免放大弱边缘）
+    const horiz = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, 0, 1, -2, 0, 2, -1, 0, 1] }).toBuffer();
+    const vert = await sharp(gray).convolve({ width: 3, height: 3, kernel: [-1, -2, -1, 0, 0, 0, 1, 2, 1] }).toBuffer();
+    // 3) 边缘强度相加
+    const edges = await sharp(horiz).composite([{ input: vert, blend: 'add' }]).toBuffer();
+    // 4) 自适应分位数阈值：保留约 20% 最强边缘（清晰、有造型、不糊）
     const { data } = await sharp(edges).greyscale().raw().toBuffer({ resolveWithObject: true });
     const arr = Array.from(data).sort((a, b) => a - b);
     const N = arr.length;
-    const thr = arr[Math.max(0, Math.floor(N * 0.65))];
+    const thr = arr[Math.max(0, Math.floor(N * 0.80))];
     // 5) 构造透明背景纯黑线稿：高于阈值的边缘 -> 纯黑不透明线条（保证合成缩放后依然深色），其余全透明
     const out = Buffer.alloc(N * 4);
     for (let i = 0; i < N; i++) {
@@ -648,12 +648,74 @@ async function extractLineArtFromImage(imgBuf) {
       }
     }
     return await sharp(out, { raw: { width: W, height: H, channels: 4 } })
-      // 膨胀让线条更连贯、更粗、更有造型（避免断点和过细）
+      // 形态学开运算：先腐蚀再膨胀，去除小噪点同时保持线条连贯
+      .erode(1)
       .dilate(1)
       .png().toBuffer();
   } catch (e) {
     console.warn('[extractLineArtFromImage] failed:', e.message);
     return null;
+  }
+}
+
+// 对原图进行风格化处理（保证忠实于原图，同时实现手绘艺术效果）
+// 替代 AI 图生图（入梦 Pro 走 chat/completions 不支持真正图生图）
+async function applyArtStyle(imgBuf, style, paperTexture, W, H) {
+  try {
+    // 基础调整：统一尺寸 + 轻微锐化保留细节
+    let pipeline = sharp(imgBuf).resize(W, H, { fit: 'fill' });
+    // 根据风格调整
+    switch (style) {
+      case 'hand_drawn_watercolor':
+        // 水彩：轻微降低饱和度、提亮、柔化
+        pipeline = pipeline.modulate({ brightness: 1.05, saturation: 0.85 }).blur(0.3);
+        break;
+      case 'sketch':
+        // 素描：灰度高对比边缘
+        pipeline = pipeline.greyscale().normalize().convolve({ width: 3, height: 3, kernel: [-1, -1, -1, -1, 8, -1, -1, -1, -1] });
+        break;
+      case 'chinese_ink':
+        // 水墨：灰度高对比 + 轻微 sepia
+        pipeline = pipeline.greyscale().normalize().modulate({ brightness: 1.1 }).tint({ r: 180, g: 160, b: 120 });
+        break;
+      case 'retro_print':
+        // 复古印刷：提高饱和度与对比度
+        pipeline = pipeline.modulate({ brightness: 1.0, saturation: 1.3, hue: 5 }).normalize();
+        break;
+      case 'colored_pencil':
+        // 彩铅：轻微锐化 + 饱和度略增
+        pipeline = pipeline.modulate({ saturation: 1.15 }).sharpen({ sigma: 0.8 });
+        break;
+      default:
+        pipeline = pipeline.modulate({ brightness: 1.02 });
+    }
+    const styled = await pipeline.toBuffer();
+    // 添加纸张纹理（通过 blend 低透明度噪点模拟）
+    if (paperTexture && paperTexture !== 'none') {
+      const noiseBuf = await sharp({
+        create: { width: W, height: H, channels: 4, background: { r: 128, g: 128, b: 128, alpha: 0 } }
+        // 用随机噪点模拟纸张纹理
+      }).raw().toBuffer();
+      // 简化：用纯色半透明叠加模拟纸张底色
+      const paperColors = {
+        rough: { r: 245, g: 240, b: 230 },
+        linen: { r: 250, g: 248, b: 242 },
+        watercolor_paper: { r: 252, g: 250, b: 245 },
+      };
+      const pc = paperColors[paperTexture] || null;
+      if (pc) {
+        // 叠加纸张底色（低透明度）
+        const paperLayer = await sharp({
+          create: { width: W, height: H, channels: 4, background: { r: pc.r, g: pc.g, b: pc.b, alpha: 1 } }
+        }).png().toBuffer();
+        return await sharp(styled).composite([{ input: paperLayer, blend: 'overlay', opacity: 0.15 }]).png().toBuffer();
+      }
+    }
+    return await sharp(styled).png().toBuffer();
+  } catch (e) {
+    console.warn('[applyArtStyle] failed:', e.message);
+    // 失败时返回原图缩放
+    return sharp(imgBuf).resize(W, H, { fit: 'fill' }).png().toBuffer();
   }
 }
 
@@ -689,9 +751,25 @@ router.post('/', async (req, res) => {
     body._palette = palette;
     console.log('[Generation] palette:', palette);
 
-    // ---- 1) 正面：生成插画素材 （与背面线稿提取并行，降低等待） ----
+    // ---- 1) 正面：生成插画素材 ----
+    // chat 类模型（入梦 Pro）不支持真正图生图，改用 sharp 风格化处理原图（保证忠实）
+    // image 类模型（gpt-image-2）走 AI 生成
+    const isChatModel = freeModel && freeModel.kind === 'chat';
     const [frontArtBuf, extractedBackLine] = await Promise.all([
-      modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`),
+      (async () => {
+        if (isChatModel && body.imageUrl) {
+          // chat 模型：对原图做 sharp 风格化（忠实于原图）
+          try {
+            const imgData = await processImageUrl(body.imageUrl);
+            if (imgData) {
+              const imgBuf = Buffer.from(imgData.split(',')[1], 'base64');
+              return await applyArtStyle(imgBuf, body.style, body.paperTexture, canvasW - Math.round(canvasW * 0.35), canvasH);
+            }
+          } catch (e) { /* ignore */ }
+        }
+        // image 模型 或 无图：走 AI 生成
+        return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
+      })(),
       (async () => {
         if (!isDouble || !body.imageUrl) return null;
         try {
