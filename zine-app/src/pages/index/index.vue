@@ -992,7 +992,7 @@ async function onGenerate() {
       },
     }
     genStep.value = 1 // 正面生成中
-    const resp = await request('/api/generation/', { method: 'POST', data, timeout: 180000 })
+    const resp = await request('/api/generation/', { method: 'POST', data, timeout: 120000 })
     genStep.value = 2 // 正面完成
 
     // 处理结果（兼容两种返回格式：直接返回 result 或包裹在 data 里）
