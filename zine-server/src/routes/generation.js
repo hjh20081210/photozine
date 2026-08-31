@@ -141,10 +141,34 @@ function esc(s) {
 
 // 在指定位置绘制一个方正的色块（用户指定的标准矩形，非不规则笔刷）
 function brushSwatch(x, y, size, color) {
+  // 水彩晕染毛边圆角色块 - 不规则边缘模拟水彩泼墨效果
   const s = size;
+  const cx = x + s / 2;
+  const cy = y + s / 2;
+  const r = s * 0.42;
+  // 生成不规则毛边圆形路径（模拟水彩扩散）
+  const points = 12;
+  let pathD = '';
+  for (let i = 0; i <= points; i++) {
+    const angle = (i / points) * Math.PI * 2;
+    const noise = 0.82 + Math.sin(i * 2.7 + x * 0.3) * 0.12 + Math.cos(i * 1.3 + y * 0.2) * 0.06;
+    const pr = r * noise;
+    const px = cx + Math.cos(angle) * pr;
+    const py = cy + Math.sin(angle) * pr;
+    if (i === 0) pathD += `M${px.toFixed(1)},${py.toFixed(1)}`;
+    else {
+      const prevAngle = ((i - 1) / points) * Math.PI * 2;
+      const prevNoise = 0.82 + Math.sin((i-1) * 2.7 + x * 0.3) * 0.12 + Math.cos((i-1) * 1.3 + y * 0.2) * 0.06;
+      const prevR = r * prevNoise;
+      const cpx = cx + Math.cos(prevAngle + 0.26) * prevR * 1.08;
+      const cpy = cy + Math.sin(prevAngle + 0.26) * prevR * 1.08;
+      pathD += `Q${cpx.toFixed(1)},${cpy.toFixed(1)} ${px.toFixed(1)},${py.toFixed(1)}`;
+    }
+  }
+  pathD += 'Z';
   return `<g>
-    <rect x="${x}" y="${y}" width="${s}" height="${s}" rx="${Math.round(s * 0.06)}" fill="${color}" opacity="0.94"/>
-    <rect x="${x + s * 0.06}" y="${y + s * 0.06}" width="${s * 0.88}" height="${s * 0.88}" rx="${Math.round(s * 0.04)}" fill="${color}" opacity="0.35"/>
+    <path d="${pathD}" fill="${color}" opacity="0.85"/>
+    <path d="${pathD}" fill="${color}" opacity="0.3" transform="translate(${(-2).toFixed(1)},${(-2).toFixed(1)}) scale(1.05)"/>
   </g>`;
 }
 
@@ -194,7 +218,7 @@ function buildFrontArtPrompt(body) {
   const textureMap = { linen: '亚麻纸纹', kraft: '牛皮纸纹', watercolor: '水彩纸纹', rice: '宣纸纹', craft: '手工纸纹' };
   const textureText = paperTexture && paperTexture !== 'none' ? `纸张纹理为${textureMap[paperTexture] || paperTexture}，画面带有该纸张的质感与底色。` : '';
   const titleText = title ? `主题为 "${esc(String(title).replace(/\n/g, ' '))}"` : '';
-  return `参考照片中的场景，创作一幅${stylePrompt}插画。关键要求：1）完全复制原照片的构图、视角、主体位置、大小比例、远近层次，确保观者能一眼认出是同一个场景；2）主体景物（如帆船、建筑、人物、山水等）的形状、数量、位置必须与原片一致；3）将照片场景转化为${stylePrompt}，具有明显的艺术笔触、颜料质感和纸张纹理；4）画面带不规则淡墨晕染毛边，颜料扩散斑驳水痕，半透明质感，同色系柔和低饱和，边缘留白。${textureText}${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`.replace(/\s+/g, ' ').trim();
+  return `将照片转为水彩手绘风景插画，画面被不规则水彩泼墨晕染边框包裹，颜料扩散斑驳水痕，半透明水彩质感，低饱和度柔和色彩，柔和平涂，纸张肌理，柔和自然光。关键要求：1）完全复制原照片的构图、视角、主体位置、大小比例、远近层次，确保观者能一眼认出是同一个场景；2）主体景物的形状、数量、位置必须与原片一致；3）右侧插画区域进行对原图进行插画设计，具有明显的水彩艺术笔触、颜料质感和纸张纹理；4）画面带不规则淡墨晕染毛边，颜料扩散斑驳水痕，半透明质感，同色系柔和低饱和，边缘留白。${textureText}${titleText}。这是明信片正面的插画部分，由程序自动排版，画面中绝对不能出现任何文字、字母、数字、标点、符号、标志或水印，绝对不能出现任何文字。`.replace(/\s+/g, ' ').trim();
 }
 
 // 正面合成：左侧文字信息栏（DOM 精确排版）+ 右侧插画
@@ -215,9 +239,8 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
   const labelColor = '#9B8B78';
   const swatch = body._palette ? body._palette.split(',').map(s => s.trim()) : ['#A8C4DA', '#2E4A66', '#E2D8C9'];
 
-  const enTitle = title && String(title).trim() ? toEnglishTitle(String(title).trim()) : '';
-  // 用户未填标题时留空（不输出 UNTITLED、不混入日期/地点）
-  const titleText = esc(enTitle || '');
+  // 用户输入什么语言就显示什么语言，不做翻译
+  const titleText = esc(title && String(title).trim() ? String(title).trim() : '');
   const locText = esc(location && String(location).trim() ? String(location).trim() : '');
   const dateText = esc(date && String(date).trim() ? String(date).trim() : '');
 
@@ -254,11 +277,11 @@ async function composeFront({ artBuffer, body, canvasW, canvasH }) {
   const maxCharsPerLine = titleCharCount <= 4 ? 6 : titleCharCount <= 8 ? 8 : 10;
   const titleLines = wrapLines(titleText, maxCharsPerLine).slice(0, 3);
   // 标题字号根据字数自适应：字少则大，字多则小
-  let titleFontSize = Math.round(leftW * 0.085);
-  if (titleCharCount <= 2) titleFontSize = Math.round(leftW * 0.13);
-  else if (titleCharCount <= 4) titleFontSize = Math.round(leftW * 0.10);
-  else if (titleCharCount <= 7) titleFontSize = Math.round(leftW * 0.08);
-  else titleFontSize = Math.round(leftW * 0.065);
+  let titleFontSize = Math.round(leftW * 0.11);
+  if (titleCharCount <= 2) titleFontSize = Math.round(leftW * 0.17);
+  else if (titleCharCount <= 4) titleFontSize = Math.round(leftW * 0.13);
+  else if (titleCharCount <= 7) titleFontSize = Math.round(leftW * 0.10);
+  else titleFontSize = Math.round(leftW * 0.085);
   // 标题起始位置：001 线下方留白
   let titleSvg = '';
   let ty = Math.round(canvasH * 0.28);
