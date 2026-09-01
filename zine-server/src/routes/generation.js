@@ -495,7 +495,7 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
   if (imageUrl) {
     try {
       if (kind === 'chat') {
-        // chat 类模型：用 sharp 压缩图片到 600x800（3:4比例），给模型足够细节
+        // chat 类模型：用 sharp 压缩图片到较小尺寸（入梦 Pro 对大图会 504 上游超时）
         const sharp = (await import('sharp')).default;
         const fs = (await import('fs')).default;
         const path = (await import('path')).default;
@@ -503,11 +503,11 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
         let imgBuf;
         if (isLocalPath) {
           const filePath = path.join('/tmp/zine-upload', path.basename(imageUrl));
-          imgBuf = await sharp(filePath).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 70 }).toBuffer();
+          imgBuf = await sharp(filePath).resize(150, 200, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 55 }).toBuffer();
         } else {
           const raw = await fetch(imageUrl);
           const ab = await raw.arrayBuffer();
-          imgBuf = await sharp(Buffer.from(ab)).resize(600, 800, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 70 }).toBuffer();
+          imgBuf = await sharp(Buffer.from(ab)).resize(150, 200, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 55 }).toBuffer();
         }
         inputData = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
       } else {
