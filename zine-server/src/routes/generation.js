@@ -503,11 +503,11 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
         let imgBuf;
         if (isLocalPath) {
           const filePath = path.join('/tmp/zine-upload', path.basename(imageUrl));
-          imgBuf = await sharp(filePath).resize(150, 200, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 55 }).toBuffer();
+          imgBuf = await sharp(filePath).resize(180, 240, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 60 }).toBuffer();
         } else {
           const raw = await fetch(imageUrl);
           const ab = await raw.arrayBuffer();
-          imgBuf = await sharp(Buffer.from(ab)).resize(150, 200, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 55 }).toBuffer();
+          imgBuf = await sharp(Buffer.from(ab)).resize(180, 240, { fit: 'inside', withoutEnlargement: false }).jpeg({ quality: 60 }).toBuffer();
         }
         inputData = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
       } else {
