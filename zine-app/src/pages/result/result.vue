@@ -416,8 +416,9 @@ function saveImage(url) {
   left: 0; right: 0;
   bottom: 0;
   z-index: 90;
-  background: linear-gradient(180deg, rgba(244,239,232,0) 0%, rgba(244,239,232,0.9) 30%, rgba(244,239,232,1) 100%);
-  padding: 20rpx 32rpx 24rpx;
+  background: linear-gradient(180deg, rgba(244,239,232,0) 0%, rgba(244,239,232,0.92) 25%, rgba(244,239,232,1) 100%);
+  padding: 24rpx 32rpx 28rpx;
+  backdrop-filter: blur(8rpx);
 }
 .bottom-inner {
   display: flex;
@@ -446,18 +447,18 @@ function saveImage(url) {
 .neo-btn:active { transform: scale(0.97); }
 .type-primary {
   color: #fff;
-  background: var(--primary);
-  box-shadow: var(--shadow-btn);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-deep) 100%);
+  box-shadow: var(--shadow-btn), 0 8rpx 24rpx rgba(216, 106, 70, 0.25);
 }
 .type-primary:active {
-  background: var(--primary-deep);
-  box-shadow: 0 5rpx 14rpx rgba(193, 88, 55, 0.3);
+  background: linear-gradient(135deg, var(--primary-deep) 0%, #a84a2a 100%);
+  box-shadow: 0 6rpx 18rpx rgba(193, 88, 55, 0.35);
 }
 .type-ghost {
   color: var(--ink);
-  background: #fff;
+  background: rgba(255,255,255,0.9);
   border: 1.5rpx solid var(--line-strong);
-  box-shadow: none;
+  box-shadow: var(--shadow-soft);
 }
 .type-ghost:active { background: var(--paper-bg-soft); }
 .size-lg {

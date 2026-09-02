@@ -1213,8 +1213,9 @@ async function onGenerate() {
 .chip.mini { padding: 12rpx 22rpx; }
 .chip:active { transform: scale(0.96); }
 .chip.on {
-  background: var(--primary);
-  box-shadow: 0 6rpx 16rpx rgba(216, 106, 70, 0.3);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-deep) 100%);
+  box-shadow: 0 8rpx 20rpx rgba(216, 106, 70, 0.35), inset 0 1rpx 0 rgba(255,255,255,0.2);
+  transform: translateY(-2rpx);
 }
 .chip.on .chip-label { color: #fff; }
 .chip-label { font-size: 26rpx; font-weight: 700; color: var(--ink-2); }
@@ -1325,25 +1326,27 @@ async function onGenerate() {
   justify-content: center;
   gap: 14rpx;
   width: 100%;
-  max-width: 520rpx;
-  height: 108rpx;
+  max-width: 540rpx;
+  height: 112rpx;
   border-radius: 999rpx;
-  padding: 0 44rpx;
-  font-size: 32rpx;
+  padding: 0 48rpx;
+  font-size: 34rpx;
   font-weight: 800;
-  letter-spacing: 0.5rpx;
+  letter-spacing: 1rpx;
   color: #fff;
-  background: var(--primary);
-  box-shadow: var(--shadow-btn);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-deep) 100%);
+  box-shadow: var(--shadow-btn), 0 8rpx 24rpx rgba(216, 106, 70, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   white-space: nowrap;
   font-family: var(--font-sans);
+  position: relative;
+  overflow: hidden;
 }
 .gen-btn:active {
-  transform: scale(0.97);
-  background: var(--primary-deep);
-  box-shadow: 0 5rpx 14rpx rgba(193, 88, 55, 0.3);
+  transform: scale(0.96);
+  background: linear-gradient(135deg, var(--primary-deep) 0%, #a84a2a 100%);
+  box-shadow: 0 6rpx 18rpx rgba(193, 88, 55, 0.35);
 }
 .gen-btn.disabled { opacity: 0.55; pointer-events: none; }
 .btn-spin {
