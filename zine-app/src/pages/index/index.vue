@@ -7,7 +7,7 @@
         <text class="nav-brand serif">Zine明信片创作</text>
         <text class="nav-head serif-title">创作页</text>
       </view>
-      <view class="nav-ico" @click="goSettings">
+      <view class="nav-ico" @click="goHistory">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#2C241E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" />
@@ -945,6 +945,7 @@ function applyCustomRatio() {
   uni.showToast({ title: `比例 ${w}:${h}`, icon: 'none' })
 }
 
+function goHistory() { uni.navigateTo({ url: '/pages/history/history' }) }
 function goSettings() { uni.navigateTo({ url: '/pages/settings/api' }) }
 
 async function onGenerate() {

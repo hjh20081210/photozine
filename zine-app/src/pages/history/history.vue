@@ -1,5 +1,29 @@
 <template>
   <view class="page paper-bg">
+    <!-- 搜索栏 -->
+    <view class="search-bar">
+      <view class="search-input-wrap">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#9B9485" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <input
+          class="search-input"
+          type="text"
+          v-model="searchText"
+          placeholder="搜索作品名称或日期"
+          placeholder-class="search-placeholder"
+          confirm-type="search"
+          @confirm="onSearch"
+        />
+        <view v-if="searchText" class="search-clear" @click="onClearSearch">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9B9485" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </view>
+      </view>
+    </view>
+
     <scroll-view scroll-y class="body" :style="{ paddingBottom: '80rpx' }">
       <view v-if="loading" class="state">
         <view class="state-spinner" />
@@ -21,8 +45,19 @@
         </NeoButton>
       </view>
 
+      <view v-else-if="filteredItems.length === 0" class="state">
+        <view class="state-icon">
+          <svg viewBox="0 0 24 24" width="52" height="52" fill="none" stroke="#9B9485" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+        </view>
+        <text class="state-title">未找到匹配作品</text>
+        <text class="caption">试试其他关键词</text>
+      </view>
+
       <view v-else class="list">
-        <view v-for="it in items" :key="it.id" class="item neo-card" @click="openItem(it)">
+        <view v-for="it in filteredItems" :key="it.id" class="item neo-card" @click="openItem(it)">
           <view class="thumb-wrap">
             <image v-if="it.frontUrl" :src="store.fullUrl(it.frontUrl)" mode="aspectFill" class="thumb" />
             <view v-else class="thumb thumb-empty">
@@ -48,13 +83,33 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import store from '@/store/index.js'
 import { request } from '@/utils/request.js'
 import NeoButton from '@/components/NeoButton.vue'
 
 const items = ref([])
 const loading = ref(true)
+const searchText = ref('')
+
+// 根据搜索关键词过滤作品（按标题或日期）
+const filteredItems = computed(() => {
+  const keyword = searchText.value.trim().toLowerCase()
+  if (!keyword) return items.value
+  return items.value.filter((it) => {
+    const title = (it.title || it.styleName || '').toLowerCase()
+    const dateStr = fmt(it.createdAt).toLowerCase()
+    return title.includes(keyword) || dateStr.includes(keyword)
+  })
+})
+
+function onSearch() {
+  // 搜索逻辑已通过 computed 自动触发
+}
+
+function onClearSearch() {
+  searchText.value = ''
+}
 
 async function load() {
   loading.value = true
@@ -244,5 +299,60 @@ load()
   font-size: 24rpx;
   margin-left: 12rpx;
   flex-shrink: 0;
+}
+
+/* ---------- 搜索栏 ---------- */
+.search-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 20rpx 32rpx;
+  background: linear-gradient(180deg, rgba(244,239,232,1) 0%, rgba(244,239,232,0.95) 100%);
+  backdrop-filter: blur(12rpx);
+}
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--paper-surface);
+  border-radius: 48rpx;
+  padding: 16rpx 28rpx;
+  box-shadow: var(--shadow-soft), 0 2rpx 8rpx rgba(0,0,0,0.02);
+  border: 1rpx solid rgba(255,255,255,0.9);
+  transition: all 0.25s ease;
+}
+.search-input-wrap:focus-within {
+  box-shadow: var(--shadow-soft), 0 4rpx 16rpx rgba(216, 106, 70, 0.1);
+  border-color: rgba(216, 106, 70, 0.2);
+}
+.search-icon {
+  margin-right: 14rpx;
+  flex-shrink: 0;
+}
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: var(--ink);
+  height: 50rpx;
+  line-height: 50rpx;
+  font-family: var(--font-sans);
+}
+.search-placeholder {
+  color: var(--ink-3);
+  font-size: 28rpx;
+}
+.search-clear {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: var(--bg-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 12rpx;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.search-clear:active {
+  background: #e0d8cc;
 }
 </style>
