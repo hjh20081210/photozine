@@ -127,7 +127,7 @@ const store = reactive({
       modelKey: 'gpt-image-2',
       imageInput: 'auto',
       free: true,
-      pointsCost: 200,
+      pointsCost: 300,
     },
     {
       id: 'cfg_free_seedream_4_5',

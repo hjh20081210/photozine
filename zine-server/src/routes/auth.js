@@ -17,6 +17,25 @@ const SESSION_DAYS = 30;
 
 seedAdmin();
 
+// 迁移：确保所有老用户都有积分字段
+function migratePoints() {
+  try {
+    const db = loadDB();
+    let changed = false;
+    for (const u of db.users || []) {
+      if (typeof u.points !== 'number') {
+        u.points = 1000;
+        u.lastCheckInAt = null;
+        changed = true;
+      }
+    }
+    if (changed) saveDB(db);
+  } catch (e) {
+    console.error('[migrate] points 迁移失败', e.message);
+  }
+}
+migratePoints();
+
 function makeSession(db, userId) {
   const tok = makeToken();
   const ttl = Date.now() + SESSION_DAYS * 24 * 3600 * 1000;
@@ -108,6 +127,8 @@ router.post('/github', async (req, res) => {
           passwordHash: hashPassword(crypto.randomBytes(16).toString('hex'), salt),
           isAdmin: false,
           createdAt: new Date().toISOString(),
+          points: 1000,
+          lastCheckInAt: null,
         };
         db.users.push(user);
         saveDB(db);
@@ -129,6 +150,8 @@ router.post('/github', async (req, res) => {
         passwordHash: hashPassword(crypto.randomBytes(16).toString('hex'), salt),
         isAdmin: false,
         createdAt: new Date().toISOString(),
+        points: 1000,
+        lastCheckInAt: null,
       };
       db.users.push(user);
       saveDB(db);

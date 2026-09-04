@@ -74,9 +74,20 @@ export function seedAdmin() {
         passwordHash: hashPassword(ADMIN.password, salt),
         isAdmin: true,
         createdAt: new Date().toISOString(),
+        points: 1000,
+        lastCheckInAt: null,
       });
       saveDB(db);
       console.log('[auth] 管理员账号已初始化');
+    } else {
+      // 确保老用户也有积分字段
+      const admin = (db.users || []).find((u) => u.username === ADMIN.username);
+      if (admin && typeof admin.points !== 'number') {
+        admin.points = 1000;
+        admin.lastCheckInAt = null;
+        saveDB(db);
+        console.log('[auth] 管理员积分已补发');
+      }
     }
   } catch (e) {
     console.error('[auth] seed 失败', e.message);

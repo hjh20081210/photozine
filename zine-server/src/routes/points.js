@@ -8,7 +8,7 @@ const NEW_USER_INITIAL_POINTS = 1000;
 
 // 积分消耗配置：免费内置模型每次生成消耗多少积分
 export const MODEL_POINTS_COST = {
-  'gpt-image-2': 200,
+  'gpt-image-2': 300,
   'rumeng-pro': 100,
   'seedream-4-5': 200,
 };
@@ -26,8 +26,11 @@ router.post('/check-in', (req, res) => {
     const user = findByToken(db, tok);
     if (!user) return res.status(401).json({ code: 401, msg: '登录已过期', data: null });
 
-    // 初始化积分
-    if (typeof user.points !== 'number') user.points = NEW_USER_INITIAL_POINTS;
+    // 初始化积分（新用户或未初始化的老用户）
+    if (typeof user.points !== 'number') {
+      user.points = NEW_USER_INITIAL_POINTS;
+      saveDB(db);
+    }
 
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
