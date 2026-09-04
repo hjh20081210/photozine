@@ -8,6 +8,7 @@ import historyRouter from './routes/history.js';
 import authRouter from './routes/auth.js';
 import feedbackRouter from './routes/feedback.js';
 import freeModelsRouter from './routes/free-models.js';
+import pointsRouter from './routes/points.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,6 +57,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/feedback', feedbackRouter);
 // 免费模型管理（管理员增删改）
 app.use('/api/free-models', freeModelsRouter);
+// 积分系统
+app.use('/api/points', pointsRouter);
 // 上传的文件静态访问
 const uploadDir = process.env.UPLOAD_PATH || '/tmp/zine-upload';
 app.use('/upload', express.static(uploadDir));

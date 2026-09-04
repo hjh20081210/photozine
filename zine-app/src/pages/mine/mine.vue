@@ -39,6 +39,28 @@
         </template>
       </view>
 
+      <!-- 积分卡片 + 签到 -->
+      <view class="points-card neo-card">
+        <view class="points-left">
+          <view class="points-label">我的积分</view>
+          <view class="points-value">
+            <text class="points-num">{{ points }}</text>
+            <text class="points-unit">分</text>
+          </view>
+          <view class="points-tip" v-if="user">
+            <text v-if="checkedToday">今日已签到 ✓</text>
+            <text v-else>每日签到 +{{ dailyReward }} 积分</text>
+          </view>
+          <view v-else class="points-tip">登录后查看积分</view>
+        </view>
+        <view
+          :class="['check-in-btn', { disabled: !user || checkedToday, checked: checkedToday }]"
+          @click="onCheckIn"
+        >
+          <text class="check-in-text">{{ !user ? '登录领' : (checkedToday ? '已签到' : '签到') }}</text>
+        </view>
+      </view>
+
       <!-- 作品列表：2列网格 与参考图完全一致 -->
       <view class="zine-grid">
         <!-- 占位4张，展示网格样式 + 加载历史 -->
@@ -190,6 +212,9 @@ import AppTabbar from '@/components/AppTabbar.vue'
 const items = ref([])
 const loading = ref(true)
 const user = ref(null)
+const points = ref(0)
+const checkedToday = ref(false)
+const dailyReward = ref(200)
 
 const displayList = computed(() => items.value)
 
@@ -201,6 +226,40 @@ onMounted(() => {
 function syncUser() {
   store.loadAuth()
   user.value = store.user
+  if (store.user) {
+    loadPoints()
+  }
+}
+
+async function loadPoints() {
+  try {
+    const data = await request('/api/points/status', { timeout: 6000 })
+    points.value = data.points
+    checkedToday.value = data.checkedToday
+    dailyReward.value = data.dailyReward
+  } catch (e) {
+    // 静默失败
+  }
+}
+
+async function onCheckIn() {
+  if (!user.value) {
+    uni.navigateTo({ url: '/pages/login/login' })
+    return
+  }
+  if (checkedToday.value) return
+  try {
+    const data = await request('/api/points/check-in', { method: 'POST', timeout: 6000 })
+    if (data.checked) {
+      points.value = data.points
+      checkedToday.value = true
+      uni.showToast({ title: `签到成功 +${data.reward} 积分`, icon: 'none' })
+    } else {
+      uni.showToast({ title: '今日已签到', icon: 'none' })
+    }
+  } catch (e) {
+    uni.showToast({ title: e.message || '签到失败', icon: 'none' })
+  }
 }
 
 function goLogin() {
@@ -396,4 +455,98 @@ onMounted(loadHistory)
 .arrow { flex-shrink: 0; }
 
 .foot-space { height: 40rpx; }
+
+/* ---------- 积分卡片 ---------- */
+.points-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 36rpx 32rpx;
+  margin-bottom: 28rpx;
+  background: linear-gradient(135deg, #fff8f0 0%, #ffe8d8 50%, #ffd9c0 100%);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-soft), 0 4rpx 16rpx rgba(216, 106, 70, 0.12);
+  border: 1rpx solid rgba(255,255,255,0.7);
+  position: relative;
+  overflow: hidden;
+}
+.points-card::before {
+  content: '';
+  position: absolute;
+  top: -40rpx;
+  right: -40rpx;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  pointer-events: none;
+}
+.points-left {
+  flex: 1;
+  z-index: 1;
+}
+.points-label {
+  font-size: 24rpx;
+  color: #8b5e3c;
+  font-weight: 500;
+  margin-bottom: 8rpx;
+  opacity: 0.85;
+}
+.points-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+}
+.points-num {
+  font-size: 56rpx;
+  font-weight: 800;
+  color: var(--primary-deep);
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 2rpx;
+  line-height: 1.1;
+}
+.points-unit {
+  font-size: 24rpx;
+  color: #a0603d;
+  font-weight: 600;
+  margin-left: 4rpx;
+}
+.points-tip {
+  font-size: 22rpx;
+  color: #9a6a48;
+  margin-top: 10rpx;
+  opacity: 0.8;
+}
+.check-in-btn {
+  width: 140rpx;
+  height: 72rpx;
+  border-radius: 36rpx;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-deep) 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6rpx 18rpx rgba(193, 88, 55, 0.35);
+  transition: all 0.2s;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.check-in-btn:active {
+  transform: scale(0.96);
+  box-shadow: 0 4rpx 12rpx rgba(193, 88, 55, 0.3);
+}
+.check-in-btn.disabled {
+  background: linear-gradient(135deg, #c9b9a8 0%, #a89888 100%);
+  box-shadow: 0 3rpx 10rpx rgba(0,0,0,0.15);
+}
+.check-in-btn.checked {
+  background: linear-gradient(135deg, #7ab89a 0%, #5a987a 100%);
+  box-shadow: 0 3rpx 10rpx rgba(90, 152, 122, 0.3);
+}
+.check-in-text {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1rpx;
+}
 </style>

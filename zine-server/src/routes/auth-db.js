@@ -44,7 +44,14 @@ export function saveDB(db) {
 }
 
 export function publicUser(u) {
-  return { id: u.id, username: u.username, isAdmin: !!u.isAdmin, createdAt: u.createdAt };
+  return {
+    id: u.id,
+    username: u.username,
+    isAdmin: !!u.isAdmin,
+    createdAt: u.createdAt,
+    points: typeof u.points === 'number' ? u.points : 0,
+    lastCheckInAt: u.lastCheckInAt || null,
+  };
 }
 
 export function findByToken(db, tok) {

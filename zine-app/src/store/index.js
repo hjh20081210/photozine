@@ -113,6 +113,7 @@ const store = reactive({
       modelKey: 'rumeng-pro',
       imageInput: 'auto',
       free: true,
+      pointsCost: 100,
     },
     {
       id: 'cfg_free_gpt_image_2',
@@ -126,6 +127,7 @@ const store = reactive({
       modelKey: 'gpt-image-2',
       imageInput: 'auto',
       free: true,
+      pointsCost: 200,
     },
     {
       id: 'cfg_free_seedream_4_5',
@@ -139,6 +141,7 @@ const store = reactive({
       modelKey: 'seedream-4-5',
       imageInput: 'auto',
       free: true,
+      pointsCost: 200,
     },
   ],
 

@@ -5,6 +5,8 @@ import path from 'path';
 import sharp from 'sharp';
 import { fileURLToPath } from 'url';
 import { getFreeModelMap } from './free-models.js';
+import { loadDB, findByToken } from './auth-db.js';
+import { deductPoints, hasEnoughPoints, getModelPointsCost } from './points.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -824,6 +826,23 @@ router.post('/', async (req, res) => {
     // 命中内置免费模型（OpenAI 兼容 chat/completions），走 generateViaOpenAI；否则走 coze SDK
     let freeModel = getFreeModelMap()[modelKey] || null;
     const model = freeModel ? freeModel.model : (MODEL_MAP[modelKey] || DEFAULT_MODEL);
+
+    // ---- 积分检查与扣减 ----
+    const pointsCost = getModelPointsCost(modelKey);
+    let deductUser = null;
+    if (pointsCost > 0) {
+      const tok = (req.headers['x-session'] || '').toString();
+      if (tok) {
+        const db = loadDB();
+        deductUser = findByToken(db, tok);
+      }
+      if (deductUser) {
+        if (!hasEnoughPoints(deductUser, pointsCost)) {
+          return res.status(402).json({ code: 402, msg: `积分不足，当前 ${deductUser.points || 0} 积分，生成需要 ${pointsCost} 积分`, data: null });
+        }
+      }
+    }
+
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers);
     const config = new Config();
     const client = new ImageGenerationClient(config, customHeaders);
@@ -915,10 +934,21 @@ router.post('/', async (req, res) => {
 
     console.log('[Generation] success, front:', frontUrl.substring(0, 60) + '...');
 
+    // 生成成功后扣减积分
+    let remainingPoints = null;
+    if (pointsCost > 0 && deductUser) {
+      const db = loadDB();
+      const freshUser = (db.users || []).find((u) => u.id === deductUser.id);
+      if (freshUser) {
+        deductPoints(db, freshUser, pointsCost);
+        remainingPoints = freshUser.points;
+      }
+    }
+
     res.json({
       code: 200,
       msg: 'ok',
-      data: { status: 'SUCCEEDED', result: { frontUrl, backUrl } },
+      data: { status: 'SUCCEEDED', result: { frontUrl, backUrl }, points: remainingPoints, pointsCost, pointsDeducted: pointsCost > 0 },
     });
   } catch (error) {
     console.error('[Generation] error:', error.message);

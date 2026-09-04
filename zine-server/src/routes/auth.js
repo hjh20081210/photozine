@@ -46,6 +46,8 @@ router.post('/register', (req, res) => {
       passwordHash: hashPassword(pass, salt),
       isAdmin: false,
       createdAt: new Date().toISOString(),
+      points: 1000,
+      lastCheckInAt: null,
     };
     db.users.push(user);
     const tok = makeSession(db, user.id);

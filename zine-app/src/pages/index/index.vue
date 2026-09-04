@@ -257,7 +257,12 @@
               </view>
               <view class="mp-info">
                 <text class="mp-name">{{ c.name }}</text>
-                <text class="mp-model">{{ c.model }}</text>
+                <view class="mp-sub">
+                  <text class="mp-model">{{ c.model }}</text>
+                  <view v-if="c.pointsCost && c.pointsCost > 0" class="mp-points">
+                    <text class="mp-points-txt">-{{ c.pointsCost }} 分/次</text>
+                  </view>
+                </view>
               </view>
               <view v-if="c.id === store.activeConfigId" class="mp-check">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -1653,14 +1658,39 @@ async function onGenerate() {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 220rpx;
 }
+.mp-sub {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  overflow: hidden;
+  max-width: 220rpx;
+}
 .mp-model {
   font-size: 20rpx;
   color: var(--ink-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 220rpx;
+  flex-shrink: 0;
+  max-width: 130rpx;
+}
+.mp-points {
+  flex-shrink: 0;
+  background: rgba(255, 180, 140, 0.18);
+  padding: 2rpx 10rpx;
+  border-radius: 16rpx;
+}
+.mp-points-txt {
+  font-size: 18rpx;
+  color: var(--primary-deep);
+  font-weight: 600;
 }
 .mp-item.on .mp-name { color: #fff; }
 .mp-item.on .mp-model { color: rgba(255,255,255,0.85); }
+.mp-item.on .mp-points {
+  background: rgba(255,255,255,0.25);
+}
+.mp-item.on .mp-points-txt {
+  color: #fff;
+}
 .mp-check {
   flex-shrink: 0;
   width: 28rpx; height: 28rpx;
