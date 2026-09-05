@@ -260,7 +260,7 @@
                 <view class="mp-sub">
                   <text class="mp-model">{{ c.model }}</text>
                   <view v-if="c.pointsCost && c.pointsCost > 0" class="mp-points">
-                    <text class="mp-points-txt">-{{ c.pointsCost }} 分/次</text>
+                    <text class="mp-points-txt">{{ c.pointsCost }}积分/次</text>
                   </view>
                 </view>
               </view>

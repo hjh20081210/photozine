@@ -18,8 +18,9 @@
             <text class="auth-name">{{ user.username }}</text>
             <text class="auth-role" :class="{ admin: user.isAdmin }">{{ user.isAdmin ? '管理员' : '普通用户' }}</text>
           </view>
-          <view class="auth-logout" @click="logout">
-            <text>退出</text>
+          <view class="auth-points-mini">
+            <text class="auth-points-num">{{ points }}</text>
+            <text class="auth-points-label">积分</text>
           </view>
         </template>
         <template v-else>
@@ -33,7 +34,7 @@
             <text class="auth-name">未登录</text>
             <text class="auth-role">登录后同步作品与账号</text>
           </view>
-          <view class="auth-logout primary" @click="goLogin">
+          <view class="auth-login-btn" @click="goLogin">
             <text>登录 / 注册</text>
           </view>
         </template>
@@ -54,10 +55,11 @@
           <view v-else class="points-tip">登录后查看积分</view>
         </view>
         <view
-          :class="['check-in-btn', { disabled: !user || checkedToday, checked: checkedToday }]"
+          :class="['check-in-btn', { disabled: !user || checkedToday || checkLoading, checked: checkedToday }]"
           @click="onCheckIn"
         >
-          <text class="check-in-text">{{ !user ? '登录领' : (checkedToday ? '已签到' : '签到') }}</text>
+          <text v-if="checkLoading" class="check-in-text">签到中...</text>
+          <text v-else class="check-in-text">{{ !user ? '登录领' : (checkedToday ? '已签到' : '签到') }}</text>
         </view>
       </view>
 
@@ -132,6 +134,19 @@
       </view>
 
       <!-- 意见反馈 -->
+      <view class="line-item" @click="goSettings">
+        <view class="li-left">
+          <view class="li-ico settings-ico">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </view>
+          <text class="li-txt serif">设置</text>
+        </view>
+        <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+      </view>
+
       <view class="line-item" @click="goFeedback">
         <view class="li-left">
           <view class="li-ico fb-ico">
@@ -215,6 +230,7 @@ const user = ref(null)
 const points = ref(0)
 const checkedToday = ref(false)
 const dailyReward = ref(200)
+const checkLoading = ref(false)
 
 const displayList = computed(() => items.value)
 
@@ -226,39 +242,63 @@ onMounted(() => {
 function syncUser() {
   store.loadAuth()
   user.value = store.user
-  if (store.user) {
+  if (store.user && store.token) {
     loadPoints()
   }
 }
 
 async function loadPoints() {
+  if (!store.token) {
+    store.loadAuth()
+    if (!store.token) return
+  }
   try {
     const data = await request('/api/points/status', { timeout: 6000 })
     points.value = data.points
     checkedToday.value = data.checkedToday
     dailyReward.value = data.dailyReward
   } catch (e) {
-    // 静默失败
+    const msg = e.message || ''
+    if (msg.includes('401') || msg.includes('未登录') || msg.includes('令牌')) {
+      // token 失效，清除本地登录态
+      store.clearAuth()
+      user.value = null
+      points.value = 0
+      checkedToday.value = false
+    }
   }
 }
 
 async function onCheckIn() {
-  if (!user.value) {
+  if (!store.token || !user.value) {
     uni.navigateTo({ url: '/pages/login/login' })
     return
   }
   if (checkedToday.value) return
+  checkLoading.value = true
   try {
-    const data = await request('/api/points/check-in', { method: 'POST', timeout: 6000 })
+    const data = await request('/api/points/check-in', { method: 'POST', timeout: 8000 })
     if (data.checked) {
       points.value = data.points
       checkedToday.value = true
       uni.showToast({ title: `签到成功 +${data.reward} 积分`, icon: 'none' })
     } else {
+      checkedToday.value = true
       uni.showToast({ title: '今日已签到', icon: 'none' })
     }
   } catch (e) {
-    uni.showToast({ title: e.message || '签到失败', icon: 'none' })
+    const msg = e.message || '签到失败'
+    if (msg.includes('401') || msg.includes('未登录') || msg.includes('令牌')) {
+      store.clearAuth()
+      user.value = null
+      points.value = 0
+      checkedToday.value = false
+      uni.navigateTo({ url: '/pages/login/login' })
+    } else {
+      uni.showToast({ title: msg, icon: 'none' })
+    }
+  } finally {
+    checkLoading.value = false
   }
 }
 
@@ -268,16 +308,14 @@ function goLogin() {
 function goFeedback() {
   uni.navigateTo({ url: '/pages/feedback/feedback' })
 }
+function goSettings() {
+  uni.navigateTo({ url: '/pages/settings/general' })
+}
 function goAdminUsers() {
   uni.navigateTo({ url: '/pages/admin-users/admin-users' })
 }
 function goAdminFreeModels() {
   uni.navigateTo({ url: '/pages/admin-free-models/admin-free-models' })
-}
-function logout() {
-  store.clearAuth()
-  user.value = null
-  uni.showToast({ title: '已退出登录', icon: 'none' })
 }
 
 function formatTime(t) {
@@ -453,6 +491,94 @@ onMounted(loadHistory)
 .li-txt.small { font-size: 24rpx; color: var(--ink-2); font-weight: 500; }
 .chev-down { display: inline-flex; align-items: center; justify-content: center; }
 .arrow { flex-shrink: 0; }
+
+/* ---------- 登录状态卡片 ---------- */
+.auth-card {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 32rpx 28rpx;
+  margin-bottom: 28rpx;
+  background: linear-gradient(135deg, #fff 0%, #faf6f0 100%);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-soft);
+  border: 1rpx solid rgba(255,255,255,0.8);
+}
+.auth-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-deep) 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 4rpx 12rpx rgba(193, 88, 55, 0.3);
+}
+.auth-avatar.guest {
+  background: linear-gradient(135deg, #c8b9a8 0%, #a89888 100%);
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.15);
+}
+.auth-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  min-width: 0;
+}
+.auth-name {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--ink);
+}
+.auth-role {
+  font-size: 22rpx;
+  color: var(--ink-3);
+}
+.auth-role.admin {
+  color: var(--primary-deep);
+  font-weight: 600;
+}
+.auth-points-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  flex-shrink: 0;
+}
+.auth-points-num {
+  font-size: 36rpx;
+  font-weight: 800;
+  color: var(--primary-deep);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.auth-points-label {
+  font-size: 20rpx;
+  color: var(--ink-3);
+}
+.auth-login-btn {
+  padding: 16rpx 32rpx;
+  border-radius: 32rpx;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-deep) 100%);
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 700;
+  box-shadow: 0 4rpx 12rpx rgba(193, 88, 55, 0.3);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.auth-login-btn:active {
+  transform: scale(0.96);
+}
+
+/* 设置图标颜色 */
+.li-ico.settings-ico {
+  background: linear-gradient(135deg, #8a9ece, #5a72b8);
+  box-shadow: 0 4rpx 12rpx rgba(90, 114, 184, 0.3);
+}
 
 .foot-space { height: 40rpx; }
 
