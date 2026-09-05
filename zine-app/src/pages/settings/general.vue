@@ -194,8 +194,9 @@ function onLogout() {
   width: 64rpx;
 }
 .body {
-  height: 100vh;
+  height: calc(100vh - 120rpx);
   padding: 24rpx 32rpx;
+  box-sizing: border-box;
 }
 
 .section-title {

@@ -41,25 +41,46 @@
       </view>
 
       <!-- 积分卡片 + 每日签到 -->
-      <view class="points-card neo-card">
+      <view v-if="user" class="points-card neo-card">
         <view class="points-left">
           <view class="points-label">我的积分</view>
           <view class="points-value">
             <text class="points-num">{{ points }}</text>
             <text class="points-unit">分</text>
           </view>
-          <view class="points-tip" v-if="user">
+          <view class="points-tip">
             <text v-if="checkedToday">今日已签到 ✓</text>
             <text v-else>每日签到 +{{ dailyReward }} 积分</text>
           </view>
-          <view v-else class="points-tip">登录后签到领积分</view>
         </view>
         <view
-          :class="['check-in-btn', { disabled: !user || checkedToday || checkLoading, checked: checkedToday }]"
+          :class="['check-in-btn', { disabled: checkedToday || checkLoading, checked: checkedToday }]"
           @click="onCheckIn"
         >
           <text v-if="checkLoading" class="check-in-text">签到中...</text>
-          <text v-else class="check-in-text">{{ !user ? '登录签到' : (checkedToday ? '已签到' : '每日签到') }}</text>
+          <text v-else class="check-in-text">{{ checkedToday ? '已签到' : '签到获' + dailyReward + '积分' }}</text>
+        </view>
+      </view>
+
+      <!-- 未登录提示卡片 -->
+      <view v-else class="points-card neo-card login-prompt-card">
+        <view class="points-left">
+          <view class="points-label">积分系统</view>
+          <view class="points-value">
+            <text class="points-num">---</text>
+          </view>
+          <view class="points-tip">登录后每日签到领取积分</view>
+        </view>
+        <view class="check-in-btn" @click="goLogin">
+          <text class="check-in-text">登录</text>
+        </view>
+      </view>
+
+      <!-- 签到成功弹窗 -->
+      <view v-if="showCheckInPopup" class="check-in-popup-mask" @click="showCheckInPopup = false">
+        <view class="check-in-popup" @click.stop>
+          <view class="check-in-popup-icon">🎉</view>
+          <view class="check-in-popup-text">已领取{{ lastReward }}积分</view>
         </view>
       </view>
 
@@ -231,6 +252,8 @@ const points = ref(0)
 const checkedToday = ref(false)
 const dailyReward = ref(200)
 const checkLoading = ref(false)
+const showCheckInPopup = ref(false)
+const lastReward = ref(0)
 
 const displayList = computed(() => items.value)
 
@@ -281,7 +304,9 @@ async function onCheckIn() {
     if (data.checked) {
       points.value = data.points
       checkedToday.value = true
-      uni.showToast({ title: `签到成功 +${data.reward} 积分`, icon: 'none' })
+      lastReward.value = data.reward
+      showCheckInPopup.value = true
+      setTimeout(() => { showCheckInPopup.value = false }, 1500)
     } else {
       checkedToday.value = true
       uni.showToast({ title: '今日已签到', icon: 'none' })
@@ -596,6 +621,15 @@ onMounted(loadHistory)
   position: relative;
   overflow: hidden;
 }
+.login-prompt-card {
+  background: linear-gradient(135deg, #f5f0e8 0%, #e8e0d8 50%, #d8d0c8 100%);
+  box-shadow: var(--shadow-soft);
+}
+.login-prompt-card::before {
+  background: rgba(255,255,255,0.2);
+}
+.login-prompt-card .points-label { color: #7a6e5e; }
+.login-prompt-card .points-num { color: #9a8877; }
 .points-card::before {
   content: '';
   position: absolute;
@@ -670,9 +704,40 @@ onMounted(loadHistory)
   box-shadow: 0 3rpx 10rpx rgba(90, 152, 122, 0.3);
 }
 .check-in-text {
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 700;
   color: #fff;
   letter-spacing: 1rpx;
+  line-height: 1.3;
+}
+.check-in-popup-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.check-in-popup {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 40rpx 60rpx;
+  text-align: center;
+  box-shadow: 0 12rpx 48rpx rgba(0,0,0,0.18);
+  animation: popIn 0.25s ease;
+}
+.check-in-popup-icon {
+  font-size: 64rpx;
+  margin-bottom: 12rpx;
+}
+.check-in-popup-text {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--ink);
+}
+@keyframes popIn {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
 }
 </style>
