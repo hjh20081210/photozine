@@ -35,6 +35,16 @@
 			}
 		},
 		{
+			"path": "pages/settings/general",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "设置",
+				"navigationBarBackgroundColor": "#F4EFE8",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4EFE8"
+			}
+		},
+		{
 			"path": "pages/history/history",
 			"style": {
 				"navigationBarTitleText": "历史记录",

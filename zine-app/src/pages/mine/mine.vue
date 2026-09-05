@@ -40,7 +40,7 @@
         </template>
       </view>
 
-      <!-- 积分卡片 + 签到 -->
+      <!-- 积分卡片 + 每日签到 -->
       <view class="points-card neo-card">
         <view class="points-left">
           <view class="points-label">我的积分</view>
@@ -52,14 +52,14 @@
             <text v-if="checkedToday">今日已签到 ✓</text>
             <text v-else>每日签到 +{{ dailyReward }} 积分</text>
           </view>
-          <view v-else class="points-tip">登录后查看积分</view>
+          <view v-else class="points-tip">登录后签到领积分</view>
         </view>
         <view
           :class="['check-in-btn', { disabled: !user || checkedToday || checkLoading, checked: checkedToday }]"
           @click="onCheckIn"
         >
           <text v-if="checkLoading" class="check-in-text">签到中...</text>
-          <text v-else class="check-in-text">{{ !user ? '登录领' : (checkedToday ? '已签到' : '签到') }}</text>
+          <text v-else class="check-in-text">{{ !user ? '登录签到' : (checkedToday ? '已签到' : '每日签到') }}</text>
         </view>
       </view>
 
