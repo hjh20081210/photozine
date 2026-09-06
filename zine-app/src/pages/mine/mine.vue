@@ -440,7 +440,6 @@ function openGithub() {
   // #endif
 }
 
-onMounted(loadHistory)
 </script>
 
 <style lang="scss" scoped>
