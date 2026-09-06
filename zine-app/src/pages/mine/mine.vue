@@ -263,10 +263,6 @@ onMounted(() => {
   syncUser()
 })
 
-onShow(() => {
-  syncUser()
-})
-
 function syncUser() {
   store.loadAuth()
   user.value = store.user
@@ -307,11 +303,6 @@ async function onCheckIn() {
   checkLoading.value = true
   try {
     const res = await request('/api/points/check-in', { method: 'POST', timeout: 8000 })
-    if (res.code !== 200) {
-      uni.showToast({ title: res.msg || '签到失败', icon: 'none' })
-      checkLoading.value = false
-      return
-    }
     if (res.data.checked) {
       points.value = res.data.points
       checkedToday.value = true
@@ -385,8 +376,9 @@ async function loadHistory() {
   }
   loading.value = true
   try {
-    const arr = await request('/api/history', { timeout: 5000 })
-    items.value = (arr || []).map((x) => ({
+    const res = await request('/api/history', { timeout: 5000 })
+    const arr = res.data || []
+    items.value = (Array.isArray(arr) ? arr : []).map((x) => ({
       ...x,
       createdAtShort: formatTime(x.createdAt),
       ratioText: (x.ratio && x.ratio.width && x.ratio.height) ? `${x.ratio.width}:${x.ratio.height}` : '2:3',
@@ -440,6 +432,7 @@ function openGithub() {
   // #endif
 }
 
+onMounted(loadHistory)
 </script>
 
 <style lang="scss" scoped>
