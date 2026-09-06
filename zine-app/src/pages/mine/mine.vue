@@ -263,6 +263,10 @@ onMounted(() => {
   syncUser()
 })
 
+onShow(() => {
+  syncUser()
+})
+
 function syncUser() {
   store.loadAuth()
   user.value = store.user
@@ -277,10 +281,11 @@ async function loadPoints() {
     if (!store.token) return
   }
   try {
-    const data = await request('/api/points/status', { timeout: 6000 })
-    points.value = data.points
-    checkedToday.value = data.checkedToday
-    dailyReward.value = data.dailyReward
+    const res = await request('/api/points/status', { timeout: 6000 })
+    if (res.code !== 200) return
+    points.value = res.data.points
+    checkedToday.value = res.data.checkedToday
+    dailyReward.value = res.data.dailyReward
   } catch (e) {
     const msg = e.message || ''
     if (msg.includes('401') || msg.includes('未登录') || msg.includes('令牌')) {
@@ -301,11 +306,16 @@ async function onCheckIn() {
   if (checkedToday.value) return
   checkLoading.value = true
   try {
-    const data = await request('/api/points/check-in', { method: 'POST', timeout: 8000 })
-    if (data.checked) {
-      points.value = data.points
+    const res = await request('/api/points/check-in', { method: 'POST', timeout: 8000 })
+    if (res.code !== 200) {
+      uni.showToast({ title: res.msg || '签到失败', icon: 'none' })
+      checkLoading.value = false
+      return
+    }
+    if (res.data.checked) {
+      points.value = res.data.points
       checkedToday.value = true
-      lastReward.value = data.reward
+      lastReward.value = res.data.reward
       showCheckInPopup.value = true
       setTimeout(() => { showCheckInPopup.value = false }, 1500)
     } else {
