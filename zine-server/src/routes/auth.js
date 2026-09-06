@@ -101,35 +101,35 @@ const GITHUB_CLIENT_ID = '0v231iuWEkgqpkoVayRQ';
 const GITHUB_CLIENT_SECRET = '3b9a83b11e9bce3ce421bd0b0ea56f927558f141';
 const GITHUB_SCOPE = 'user:email';
 
-// 动态获取 redirect_uri（基于请求协议和主机）
-function getRedirectUri(req) {
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
-  return `${proto}://${host}/api/auth/github/callback`;
+const FRONTEND_URL = 'https://photozine.coze.site';
+
+// 固定回调地址（与 GitHub OAuth 应用配置一致）
+function getRedirectUri() {
+  return 'https://api.photozine.coze.site/oauth2/code/github';
 }
 
 // ===== GET /api/auth/github —— 跳转 GitHub 授权页 =====
 router.get('/github', (req, res) => {
-  const redirectUri = getRedirectUri(req);
+  const redirectUri = getRedirectUri();
   const state = crypto.randomBytes(16).toString('hex');
   const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(GITHUB_SCOPE)}&state=${state}`;
   res.redirect(githubAuthUrl);
 });
 
-// ===== GET /api/auth/github/callback —— GitHub 回调处理 =====
-router.get('/github/callback', async (req, res) => {
+// ===== GET /oauth2/code/github —— GitHub 回调处理 =====
+router.get('/oauth2/code/github', async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
 
     if (error) {
-      return res.redirect(`/pages/login/login?github_error=${encodeURIComponent(error_description || error)}`);
+      return res.redirect(`${FRONTEND_URL}/pages/login/login?github_error=${encodeURIComponent(error_description || error)}`);
     }
     if (!code) {
-      return res.redirect(`/pages/login/login?github_error=授权码缺失`);
+      return res.redirect(`${FRONTEND_URL}/pages/login/login?github_error=授权码缺失`);
     }
 
     // 交换 code 获取 access_token
-    const redirectUri = getRedirectUri(req);
+    const redirectUri = getRedirectUri();
     const tokenResp = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -143,7 +143,7 @@ router.get('/github/callback', async (req, res) => {
     const tokenData = await tokenResp.json();
     const accessToken = tokenData.access_token;
     if (!accessToken) {
-      return res.redirect(`/pages/login/login?github_error=令牌交换失败`);
+      return res.redirect(`${FRONTEND_URL}/pages/login/login?github_error=令牌交换失败`);
     }
 
     // 获取 GitHub 用户信息
@@ -156,7 +156,7 @@ router.get('/github/callback', async (req, res) => {
     });
     const ghUser = await userResp.json();
     if (!ghUser || !ghUser.login) {
-      return res.redirect(`/pages/login/login?github_error=获取用户信息失败`);
+      return res.redirect(`${FRONTEND_URL}/pages/login/login?github_error=获取用户信息失败`);
     }
 
     // 尝试获取用户邮箱（可能不在 user 接口返回）
@@ -217,10 +217,10 @@ router.get('/github/callback', async (req, res) => {
 
     const tok = makeSession(db, user.id);
     // 重定向到前端，携带 token
-    return res.redirect(`/pages/login/login?github_token=${tok}`);
+    return res.redirect(`${FRONTEND_URL}/pages/login/login?github_token=${tok}`);
   } catch (e) {
     console.error('[GitHub OAuth] 回调失败:', e.message);
-    return res.redirect(`/pages/login/login?github_error=${encodeURIComponent('授权处理失败')}`);
+    return res.redirect(`${FRONTEND_URL}/pages/login/login?github_error=${encodeURIComponent('授权处理失败')}`);
   }
 });
 

@@ -95,11 +95,11 @@ async function githubLogin() {
   loading.value = true;
   msg.value = '';
   try {
-    // 获取后端基础 URL
-    const baseUrl = store.serverUrl || '';
+    // GitHub OAuth 后端入口（固定生产地址）
+    const backendUrl = 'https://api.photozine.coze.site';
     // 跳转到后端 GitHub OAuth 入口
     if (typeof window !== 'undefined' && window.location) {
-      window.location.href = `${baseUrl}/api/auth/github`;
+      window.location.href = `${backendUrl}/api/auth/github`;
     } else {
       msg.value = '当前环境不支持 GitHub 登录';
     }
