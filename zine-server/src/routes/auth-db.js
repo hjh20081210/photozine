@@ -51,6 +51,9 @@ export function publicUser(u) {
     createdAt: u.createdAt,
     points: typeof u.points === 'number' ? u.points : 0,
     lastCheckInAt: u.lastCheckInAt || null,
+    githubLogin: u.githubLogin || '',
+    avatar: u.avatar || '',
+    email: u.email || '',
   };
 }
 

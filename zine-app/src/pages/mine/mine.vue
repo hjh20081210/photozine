@@ -13,7 +13,8 @@
       <!-- 登录状态卡片 -->
       <view class="auth-card">
         <template v-if="user">
-          <view class="auth-avatar">{{ (user.username || 'U').slice(0, 1) }}</view>
+          <view class="auth-avatar" v-if="!user.avatar">{{ (user.username || 'U').slice(0, 1) }}</view>
+          <image class="auth-avatar-img" v-else :src="user.avatar" mode="aspectFill" />
           <view class="auth-info">
             <text class="auth-name">{{ user.username }}</text>
             <text class="auth-role" :class="{ admin: user.isAdmin }">{{ user.isAdmin ? '管理员' : '普通用户' }}</text>
@@ -546,6 +547,14 @@ onMounted(loadHistory)
 .auth-avatar.guest {
   background: linear-gradient(135deg, #c8b9a8 0%, #a89888 100%);
   box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.15);
+}
+.auth-avatar-img {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.15);
+  background: #f0f0f0;
 }
 .auth-info {
   flex: 1;

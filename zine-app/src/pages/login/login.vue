@@ -30,8 +30,10 @@
 
       <view class="divider"><view class="line"></view><text class="divider-text">或</text><view class="line"></view></view>
 
-      <view class="github-btn" @tap="githubLogin">
-        <text class="gh-icon">&#xe600;</text>
+      <view class="github-btn" :class="{ loading: loading }" @tap="githubLogin">
+        <svg class="gh-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
         <text>GitHub 快捷登录</text>
       </view>
 
@@ -93,21 +95,62 @@ async function githubLogin() {
   loading.value = true;
   msg.value = '';
   try {
-    // 后端已适配：未配置 OAuth 时降级为本地体验账号，named 'GitHub 用户'
-    const res = await request('/api/auth/github', { method: 'POST', data: { username: 'GitHub 用户' } });
-    if (res.code === 200) {
-      store.login(res.data);
-      uni.showToast({ title: 'GitHub 快捷登录成功', icon: 'success' });
-      setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 600);
+    // 获取后端基础 URL
+    const baseUrl = store.serverUrl || '';
+    // 跳转到后端 GitHub OAuth 入口
+    if (typeof window !== 'undefined' && window.location) {
+      window.location.href = `${baseUrl}/api/auth/github`;
     } else {
-      msg.value = res.msg || '登录失败';
+      msg.value = '当前环境不支持 GitHub 登录';
     }
   } catch (e) {
     msg.value = (e && e.message) || '网络异常';
-  } finally {
     loading.value = false;
   }
 }
+
+// 处理 GitHub 回调（从 URL 参数中提取 token）
+function handleCallback() {
+  if (typeof window === 'undefined' || !window.location) return;
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('github_token');
+  const error = params.get('github_error');
+  if (token) {
+    // 清除 URL 参数
+    window.history.replaceState({}, '', window.location.pathname);
+    // 验证 token 并登录
+    loading.value = true;
+    verifyAndLogin(token);
+  } else if (error) {
+    window.history.replaceState({}, '', window.location.pathname);
+    msg.value = `GitHub 登录失败：${error}`;
+  }
+}
+
+async function verifyAndLogin(token) {
+  try {
+    const res = await request('/api/auth/me', {
+      method: 'GET',
+      headers: { 'x-session': token },
+    });
+    if (res.code === 200 && res.data && res.data.user) {
+      store.login({ token, user: res.data.user });
+      uni.showToast({ title: 'GitHub 登录成功', icon: 'success' });
+      setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 600);
+    } else {
+      msg.value = 'GitHub 登录失败：验证失败';
+      loading.value = false;
+    }
+  } catch (e) {
+    msg.value = (e && e.message) || '网络异常';
+    loading.value = false;
+  }
+}
+
+onLoad((opt) => {
+  if (opt && opt.mode === 'register') mode.value = 'register';
+  handleCallback();
+});
 </script>
 
 <style scoped>
@@ -166,7 +209,10 @@ async function githubLogin() {
   border: 2rpx solid #D8CBB8; border-radius: 12rpx; padding: 24rpx 0;
   font-size: 28rpx; color: #2C241E; background: #FBF7ED;
   font-family: 'LXGWWenKai-Regular', serif;
+  transition: all 0.2s;
 }
-.gh-icon { font-size: 30rpx; }
+.github-btn:active { background: #F0E8D8; transform: scale(0.98); }
+.github-btn.loading { opacity: 0.6; pointer-events: none; }
+.gh-icon { width: 32rpx; height: 32rpx; flex-shrink: 0; }
 .tips { margin-top: 32rpx; text-align: center; font-size: 26rpx; color: #C0392B; }
 </style>

@@ -96,56 +96,108 @@ router.post('/login', (req, res) => {
   }
 });
 
-// ===== POST /api/auth/github —— GitHub 快捷登录 =====
-router.post('/github', async (req, res) => {
+// ===== GitHub OAuth 配置 =====
+const GITHUB_CLIENT_ID = '0v231iuWEkgqpkoVayRQ';
+const GITHUB_CLIENT_SECRET = '3b9a83b11e9bce3ce421bd0b0ea56f927558f141';
+const GITHUB_SCOPE = 'user:email';
+
+// 动态获取 redirect_uri（基于请求协议和主机）
+function getRedirectUri(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  return `${proto}://${host}/api/auth/github/callback`;
+}
+
+// ===== GET /api/auth/github —— 跳转 GitHub 授权页 =====
+router.get('/github', (req, res) => {
+  const redirectUri = getRedirectUri(req);
+  const state = crypto.randomBytes(16).toString('hex');
+  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(GITHUB_SCOPE)}&state=${state}`;
+  res.redirect(githubAuthUrl);
+});
+
+// ===== GET /api/auth/github/callback —— GitHub 回调处理 =====
+router.get('/github/callback', async (req, res) => {
   try {
-    const { code, username } = req.body || {};
-    const clientId = process.env.GITHUB_CLIENT_ID || '';
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET || '';
-    if (code && clientId && clientSecret) {
-      // 有 OAuth code 时走真实交换
-      const tokResp = await fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
-      }).then((r) => r.json());
-      const accessToken = tokResp.access_token;
-      if (!accessToken) return res.status(401).json({ code: 401, msg: 'GitHub 授权失败', data: null });
-      const gh = await fetch('https://api.github.com/user', {
-        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-      }).then((r) => r.json());
-      const ghName = gh.login || gh.id || 'github_user';
-      const db = loadDB();
-      let user = (db.users || []).find((u) => u.username === `gh_${ghName}`);
-      if (!user) {
-        const salt = freshSalt();
-        user = {
-          id: `u_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-          username: gh.name || gh.login || 'github_user',
-          githubLogin: ghName,
-          salt,
-          passwordHash: hashPassword(crypto.randomBytes(16).toString('hex'), salt),
-          isAdmin: false,
-          createdAt: new Date().toISOString(),
-          points: 1000,
-          lastCheckInAt: null,
-        };
-        db.users.push(user);
-        saveDB(db);
-      }
-      const tok = makeSession(db, user.id);
-      return res.json({ code: 200, msg: '登录成功', data: { token: tok, user: publicUser(user) } });
+    const { code, state, error, error_description } = req.query;
+
+    if (error) {
+      return res.redirect(`/pages/login/login?github_error=${encodeURIComponent(error_description || error)}`);
     }
-    // 未配置 OAuth —— 降级：以传入昵称创建/登录一个本地用户，便于体验 GitHub 快捷入口
-    const name = String(username || '').trim() || 'GitHub 用户';
+    if (!code) {
+      return res.redirect(`/pages/login/login?github_error=授权码缺失`);
+    }
+
+    // 交换 code 获取 access_token
+    const redirectUri = getRedirectUri(req);
+    const tokenResp = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        client_id: GITHUB_CLIENT_ID,
+        client_secret: GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: redirectUri,
+      }),
+    });
+    const tokenData = await tokenResp.json();
+    const accessToken = tokenData.access_token;
+    if (!accessToken) {
+      return res.redirect(`/pages/login/login?github_error=令牌交换失败`);
+    }
+
+    // 获取 GitHub 用户信息
+    const userResp = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'User-Agent': 'zine-app',
+      },
+    });
+    const ghUser = await userResp.json();
+    if (!ghUser || !ghUser.login) {
+      return res.redirect(`/pages/login/login?github_error=获取用户信息失败`);
+    }
+
+    // 尝试获取用户邮箱（可能不在 user 接口返回）
+    let primaryEmail = ghUser.email || '';
+    if (!primaryEmail) {
+      try {
+        const emailResp = await fetch('https://api.github.com/user/emails', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json',
+            'User-Agent': 'zine-app',
+          },
+        });
+        const emails = await emailResp.json();
+        if (Array.isArray(emails)) {
+          const primary = emails.find((e) => e.primary && e.verified) || emails.find((e) => e.verified) || emails[0];
+          if (primary) primaryEmail = primary.email || '';
+        }
+      } catch (e) {
+        // 邮箱获取失败不影响登录
+      }
+    }
+
+    const ghLogin = ghUser.login;
+    const displayName = ghUser.name || ghLogin;
+    const ghEmail = primaryEmail;
+    const ghAvatar = ghUser.avatar_url || '';
+    const ghId = ghUser.id;
+
+    // 创建或关联本地用户
     const db = loadDB();
-    let user = (db.users || []).find((u) => u.username === `gh_${name}`);
+    let user = (db.users || []).find((u) => u.githubLogin === ghLogin);
     if (!user) {
       const salt = freshSalt();
       user = {
         id: `u_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-        username: name,
-        githubLogin: 'local',
+        username: displayName,
+        githubLogin: ghLogin,
+        githubId: ghId,
+        email: ghEmail,
+        avatar: ghAvatar,
         salt,
         passwordHash: hashPassword(crypto.randomBytes(16).toString('hex'), salt),
         isAdmin: false,
@@ -155,11 +207,20 @@ router.post('/github', async (req, res) => {
       };
       db.users.push(user);
       saveDB(db);
+    } else {
+      // 更新现有用户的 GitHub 信息
+      if (ghAvatar && user.avatar !== ghAvatar) {
+        user.avatar = ghAvatar;
+        saveDB(db);
+      }
     }
+
     const tok = makeSession(db, user.id);
-    return res.json({ code: 200, msg: '登录成功', data: { token: tok, user: publicUser(user) } });
+    // 重定向到前端，携带 token
+    return res.redirect(`/pages/login/login?github_token=${tok}`);
   } catch (e) {
-    res.status(500).json({ code: 500, msg: 'GitHub 登录失败', error: e.message, data: null });
+    console.error('[GitHub OAuth] 回调失败:', e.message);
+    return res.redirect(`/pages/login/login?github_error=${encodeURIComponent('授权处理失败')}`);
   }
 });
 
