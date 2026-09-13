@@ -85,54 +85,53 @@
         </view>
       </view>
 
-      <!-- 作品列表：2列网格 与参考图完全一致 -->
-      <view class="zine-grid">
-        <!-- 占位4张，展示网格样式 + 加载历史 -->
-        <view
-          v-for="(it, idx) in displayList"
-          :key="it.id || idx"
-          class="zine-card"
-          @click="goDetail(it)"
-        >
-          <view class="cover">
-            <image
-              v-if="it.frontUrl"
-              :src="it.frontUrl"
-              mode="aspectFill"
-              class="cover-img"
-            />
-            <view v-else class="cover-ph">
-              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#C8B9A8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-                <circle cx="9" cy="10" r="1.6" />
-                <path d="M4 18l5-5 3 3 2-2 6 6" />
-              </svg>
-            </view>
-          </view>
-          <view class="foot">
-            <text class="title">{{ it.title || it.name || '未命名作品' }}</text>
-            <view class="meta">
-              <text class="date">{{ it.createdAtShort || formatTime(it.createdAt) }}</text>
-              <text class="size">{{ it.ratioText || '2:3' }}</text>
-            </view>
-          </view>
-          <text v-if="it.sides === 'FRONT_BACK'" class="badge">双</text>
-          <text v-else class="badge single">单</text>
-        </view>
-
-        <!-- 空占位卡，让用户一进入就看到参考图的2列网格结构 -->
-        <view v-if="!loading && items.length === 0" class="zine-card empty">
-          <view class="cover cover-empty">
-            <text class="empty-hint serif">还没有作品</text>
-          </view>
-          <view class="foot">
-            <text class="title">去创作一张吧</text>
-            <view class="meta">
-              <text class="date">—</text>
-              <text class="size">2:3</text>
-            </view>
+      <!-- 作品横幅：横向滑动，6幅作品 + "查看全部"按钮 -->
+      <view class="works-section">
+        <view class="works-header">
+          <text class="works-title serif">我的作品</text>
+          <view class="works-count" v-if="items.length > 0">
+            <text>{{ items.length }} 幅</text>
           </view>
         </view>
+        <scroll-view scroll-x class="works-scroll" :show-scrollbar="false">
+          <view class="works-track">
+            <view
+              v-for="(it, idx) in previewList"
+              :key="it.id || idx"
+              class="work-thumb"
+              @click="goDetail(it)"
+            >
+              <view class="work-cover">
+                <image
+                  v-if="it.frontUrl"
+                  :src="it.frontUrl"
+                  mode="aspectFill"
+                  class="work-img"
+                />
+                <view v-else class="work-placeholder">
+                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#C8B9A8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <circle cx="9" cy="10" r="1.6" />
+                    <path d="M4 18l5-5 3 3 2-2 6 6" />
+                  </svg>
+                </view>
+              </view>
+              <text class="work-title">{{ it.title || '未命名' }}</text>
+            </view>
+            <!-- 查看全部按钮 -->
+            <view class="work-thumb view-all-btn" @click="goHistory">
+              <view class="view-all-inner">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--primary-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <path d="M17 14h.01M20 17h.01M17 20h.01M14 17h.01" />
+                </svg>
+                <text class="view-all-text">查看全部</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
       </view>
 
       <!-- 我的模型入口 -->
@@ -242,6 +241,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import store from '@/store/index.js'
 import { request } from '@/utils/request.js'
 import AppTabbar from '@/components/AppTabbar.vue'
@@ -257,8 +257,14 @@ const showCheckInPopup = ref(false)
 const lastReward = ref(0)
 
 const displayList = computed(() => items.value)
+const previewList = computed(() => items.value.slice(0, 6))
 
 onMounted(() => {
+  loadHistory()
+  syncUser()
+})
+
+onShow(() => {
   loadHistory()
   syncUser()
 })
@@ -334,6 +340,9 @@ function goLogin() {
 }
 function goFeedback() {
   uni.navigateTo({ url: '/pages/feedback/feedback' })
+}
+function goHistory() {
+  uni.navigateTo({ url: '/pages/history/history' })
 }
 function goSettings() {
   uni.navigateTo({ url: '/pages/settings/general' })
@@ -458,6 +467,98 @@ onMounted(loadHistory)
 }
 
 .cover-img { width: 100%; height: 100%; }
+
+/* ---------- 作品横幅 ---------- */
+.works-section {
+  margin-bottom: 28rpx;
+}
+.works-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6rpx 16rpx;
+}
+.works-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--ink);
+}
+.works-count {
+  font-size: 24rpx;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.works-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+.works-track {
+  display: inline-flex;
+  gap: 20rpx;
+  padding-right: 32rpx;
+}
+.work-thumb {
+  width: 180rpx;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+.work-cover {
+  width: 180rpx;
+  height: 240rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  background: var(--paper-bg-soft);
+  box-shadow: var(--shadow-soft);
+  border: 1rpx solid rgba(255,255,255,0.6);
+}
+.work-img {
+  width: 100%;
+  height: 100%;
+}
+.work-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-bg-soft);
+}
+.work-title {
+  font-size: 22rpx;
+  color: var(--ink-2);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2rpx;
+}
+.view-all-btn {
+  background: transparent;
+}
+.view-all-inner {
+  width: 180rpx;
+  height: 240rpx;
+  border-radius: 16rpx;
+  border: 2rpx dashed var(--primary);
+  background: rgba(216, 106, 70, 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  transition: all 0.2s;
+}
+.view-all-inner:active {
+  transform: scale(0.96);
+  background: rgba(216, 106, 70, 0.12);
+}
+.view-all-text {
+  font-size: 24rpx;
+  color: var(--primary-deep);
+  font-weight: 600;
+}
 .cover-ph {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;

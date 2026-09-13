@@ -84,6 +84,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import store from '@/store/index.js'
 import { request } from '@/utils/request.js'
 import NeoButton from '@/components/NeoButton.vue'
@@ -114,7 +115,13 @@ function onClearSearch() {
 async function load() {
   loading.value = true
   try {
-    items.value = await request('/api/history', { timeout: 8000 })
+    const res = await request('/api/history', { timeout: 8000 })
+    const arr = (res && res.data) ? res.data : (Array.isArray(res) ? res : [])
+    items.value = (Array.isArray(arr) ? arr : []).map((x) => ({
+      ...x,
+      ratioLabel: (x.ratio && x.ratio.width && x.ratio.height) ? `${x.ratio.width}:${x.ratio.height}` : '2:3',
+      provider: x.modelName || x.provider || '',
+    }))
   } catch (e) {
     // 兜底：读本地缓存
     const local = uni.getStorageSync('zine_local_history') || []
@@ -127,6 +134,10 @@ async function load() {
     loading.value = false
   }
 }
+
+onShow(() => {
+  load()
+})
 
 function openItem(it) {
   store.preview = {
