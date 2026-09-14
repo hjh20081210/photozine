@@ -45,6 +45,16 @@
 			}
 		},
 		{
+			"path": "pages/settings/password",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "修改密码",
+				"navigationBarBackgroundColor": "#F4EFE8",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4EFE8"
+			}
+		},
+		{
 			"path": "pages/history/history",
 			"style": {
 				"navigationBarTitleText": "历史记录",

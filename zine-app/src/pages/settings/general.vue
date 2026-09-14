@@ -15,37 +15,8 @@
       <!-- 账号信息 -->
       <view class="section-title">账号</view>
       <view class="panel">
-        <view class="setting-item" @click="goAccount">
-          <view class="si-left">
-            <view class="si-ico account-ico">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21c1-4 4-6 8-6s7 2 8 6" />
-              </svg>
-            </view>
-            <view class="si-txt-wrap">
-              <text class="si-txt">账号信息</text>
-              <text class="si-sub">{{ user ? user.username : '未登录' }}</text>
-            </view>
-          </view>
-          <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
-        </view>
-
-        <view class="divider-h" />
-
         <view class="setting-item" @click="goChangePassword">
-          <view class="si-left">
-            <view class="si-ico pwd-ico">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="4" y="10" width="16" height="10" rx="2" />
-                <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-              </svg>
-            </view>
-            <view class="si-txt-wrap">
-              <text class="si-txt">修改密码</text>
-              <text class="si-sub">定期更换密码更安全</text>
-            </view>
-          </view>
+          <text class="si-txt">修改密码</text>
           <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
         </view>
       </view>
@@ -54,44 +25,21 @@
       <view class="section-title">其他</view>
       <view class="panel">
         <view class="setting-item" @click="goFeedback">
-          <view class="si-left">
-            <view class="si-ico fb-ico">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            </view>
-            <text class="si-txt">意见反馈</text>
-          </view>
+          <text class="si-txt">意见反馈</text>
           <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
         </view>
 
         <view class="divider-h" />
 
         <view class="setting-item" @click="showLicense">
-          <view class="si-left">
-            <view class="si-ico license-ico">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <path d="M14 2v6h6" />
-                <path d="M16 13H8M16 17H8M10 9H8" />
-              </svg>
-            </view>
-            <text class="si-txt">MIT 开源协议</text>
-          </view>
+          <text class="si-txt">MIT 开源协议</text>
           <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
         </view>
 
         <view class="divider-h" />
 
         <view class="setting-item" @click="openGithub">
-          <view class="si-left">
-            <view class="si-ico github-ico">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 20c-1 1-2 0-2-2m12 2c1 1 2 0 2-2M3 13c1 1 2 1 3 0m12 0c-1 1-2 1-3 0M7 8c0-1 1-2 3-2h4c2 0 3 1 3 2v2a9 9 0 0 1-9 9M8 11v2m8-2v2" />
-              </svg>
-            </view>
-            <text class="si-txt">查看 GitHub 仓库</text>
-          </view>
+          <text class="si-txt">查看 GitHub 仓库</text>
           <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
         </view>
       </view>
@@ -128,7 +76,7 @@ function goAccount() {
 }
 
 function goChangePassword() {
-  uni.showToast({ title: '请联系管理员修改', icon: 'none' })
+  uni.navigateTo({ url: '/pages/settings/password' })
 }
 
 function goFeedback() {

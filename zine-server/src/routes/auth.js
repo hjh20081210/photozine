@@ -256,6 +256,45 @@ router.get('/users', (req, res) => {
   }
 });
 
+// ===== POST /api/auth/change-password —— 修改密码 =====
+router.post('/change-password', (req, res) => {
+  try {
+    const tok = (req.headers['x-session'] || '').toString();
+    if (!tok) return res.status(401).json({ code: 401, msg: '未登录', data: null });
+    const db = loadDB();
+    const user = findByToken(db, tok);
+    if (!user) return res.status(401).json({ code: 401, msg: '登录已过期', data: null });
+
+    const { oldPassword, newPassword, confirmPassword } = req.body || {};
+    const oldPass = String(oldPassword || '');
+    const newPass = String(newPassword || '');
+    const confirmPass = String(confirmPassword || '');
+
+    if (!oldPass) return res.status(400).json({ code: 400, msg: '请输入原密码', data: null });
+    if (newPass.length < 6) return res.status(400).json({ code: 400, msg: '新密码至少 6 位', data: null });
+    if (newPass !== confirmPass) return res.status(400).json({ code: 400, msg: '两次输入的新密码不一致', data: null });
+
+    // 验证原密码
+    const oldHash = hashPassword(oldPass, user.salt);
+    if (oldHash !== user.passwordHash) {
+      return res.status(401).json({ code: 401, msg: '原密码错误', data: null });
+    }
+
+    // 更新密码
+    const newSalt = freshSalt();
+    user.salt = newSalt;
+    user.passwordHash = hashPassword(newPass, newSalt);
+
+    // 使其他会话失效（保留当前会话）
+    db.sessions = (db.sessions || []).filter((s) => s.token === tok || s.userId !== user.id);
+    saveDB(db);
+
+    res.json({ code: 200, msg: '密码修改成功', data: null });
+  } catch (e) {
+    res.status(500).json({ code: 500, msg: '修改失败', error: e.message, data: null });
+  }
+});
+
 // ===== POST /api/auth/logout =====
 router.post('/logout', (req, res) => {
   try {

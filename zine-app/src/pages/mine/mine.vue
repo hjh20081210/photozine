@@ -10,37 +10,6 @@
     </view>
 
     <scroll-view scroll-y class="body" :style="{ paddingBottom: '60rpx' }">
-      <!-- 登录状态卡片 -->
-      <view class="auth-card">
-        <template v-if="user">
-          <view class="auth-avatar" v-if="!user.avatar">{{ (user.username || 'U').slice(0, 1) }}</view>
-          <image class="auth-avatar-img" v-else :src="user.avatar" mode="aspectFill" />
-          <view class="auth-info">
-            <text class="auth-name">{{ user.username }}</text>
-            <text class="auth-role" :class="{ admin: user.isAdmin }">{{ user.isAdmin ? '管理员' : '普通用户' }}</text>
-          </view>
-          <view class="auth-points-mini">
-            <text class="auth-points-num">{{ points }}</text>
-            <text class="auth-points-label">积分</text>
-          </view>
-        </template>
-        <template v-else>
-          <view class="auth-avatar guest">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 21c1-4 4-6 8-6s7 2 8 6" />
-            </svg>
-          </view>
-          <view class="auth-info">
-            <text class="auth-name">未登录</text>
-            <text class="auth-role">登录后同步作品与账号</text>
-          </view>
-          <view class="auth-login-btn" @click="goLogin">
-            <text>登录 / 注册</text>
-          </view>
-        </template>
-      </view>
-
       <!-- 积分卡片 + 每日签到 -->
       <view v-if="user" class="points-card neo-card">
         <view class="points-left">
@@ -137,16 +106,7 @@
       <!-- 我的模型入口 -->
       <view class="divider" />
       <view class="line-item" @click="goModelSettings">
-        <view class="li-left">
-          <view class="li-ico model-ico">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="7" width="16" height="10" rx="2" />
-              <circle cx="9" cy="12" r="1.5" />
-              <circle cx="15" cy="12" r="1.5" />
-            </svg>
-          </view>
-          <text class="li-txt serif">我的模型</text>
-        </view>
+        <text class="li-txt serif">我的模型</text>
         <view class="li-right">
           <text v-if="store.modelConfigs.length > 0" class="li-count">{{ store.modelConfigs.length }} 个已接入</text>
           <text v-else class="li-count empty">去接入</text>
@@ -154,76 +114,35 @@
         </view>
       </view>
 
-      <!-- 意见反馈 -->
+      <!-- 设置 -->
       <view class="line-item" @click="goSettings">
-        <view class="li-left">
-          <view class="li-ico settings-ico">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </view>
-          <text class="li-txt serif">设置</text>
-        </view>
+        <text class="li-txt serif">设置</text>
         <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
       </view>
 
       <view class="line-item" @click="goFeedback">
-        <view class="li-left">
-          <view class="li-ico fb-ico">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          </view>
-          <text class="li-txt serif">意见反馈</text>
-        </view>
+        <text class="li-txt serif">意见反馈</text>
         <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
       </view>
 
       <!-- 管理员：用户管理 -->
       <view v-if="user && user.isAdmin" class="line-item" @click="goAdminUsers">
-        <view class="li-left">
-          <view class="li-ico admin-ico">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-          </view>
-          <text class="li-txt serif">用户管理</text>
-        </view>
+        <text class="li-txt serif">用户管理</text>
         <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
       </view>
 
       <!-- 管理员：免费模型管理 -->
       <view v-if="user && user.isAdmin" class="line-item" @click="goAdminFreeModels">
-        <view class="li-left">
-          <view class="li-ico admin-ico">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-          </view>
-          <text class="li-txt serif">免费模型管理</text>
-        </view>
+        <text class="li-txt serif">免费模型管理</text>
         <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
       </view>
 
-      <!-- 草稿 / MIT / Github -->
-      <view class="line-item" @click="toast('草稿')">
-        <text class="li-txt serif">草稿</text>
-        <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
-      </view>
+      <!-- MIT / Github -->
       <view class="line-item" @click="showLicense">
         <text class="li-txt serif">MIT开源协议</text>
         <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
       </view>
       <view class="line-item center" @click="openGithub">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#6B5B4E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8rpx;">
-          <path d="M6 20c-1 1-2 0-2-2m12 2c1 1 2 0 2-2M3 13c1 1 2 1 3 0m12 0c-1 1-2 1-3 0M7 8c0-1 1-2 3-2h4c2 0 3 1 3 2v2a9 9 0 0 1-9 9M8 11v2m8-2v2" />
-        </svg>
         <text class="li-txt serif small">查看 Github 仓库</text>
         <text class="chev-down">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#6B5B4E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
