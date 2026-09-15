@@ -351,7 +351,7 @@ function showLicense() {
   uni.navigateTo({ url: '/pages/license/license' })
 }
 function openGithub() {
-  const url = 'https://github.com/search?q=photo+to+zine+postcard&type=repositories'
+  const url = 'https://github.com/hjh20081210/photozine'
   // #ifdef H5
   try { window.open(url, '_blank') } catch (e) { toast('Github') }
   // #endif

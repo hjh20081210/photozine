@@ -12,9 +12,22 @@
       </view>
 
       <view class="form">
-        <view class="field">
+        <!-- 登录：用户名/邮箱通用输入 -->
+        <view class="field" v-if="mode === 'login'">
+          <text class="label">用户名 / 邮箱</text>
+          <input class="input" v-model="username" placeholder="请输入用户名或邮箱" placeholder-class="ph" />
+        </view>
+
+        <!-- 注册：用户名 -->
+        <view class="field" v-if="mode === 'register'">
           <text class="label">昵称 / 用户名</text>
-          <input class="input" v-model="username" :placeholder="mode === 'register' ? '给自己起个名字' : '请输入昵称'" placeholder-class="ph" />
+          <input class="input" v-model="username" placeholder="给自己起个名字" placeholder-class="ph" />
+        </view>
+
+        <!-- 注册：邮箱 -->
+        <view class="field" v-if="mode === 'register'">
+          <text class="label">邮箱</text>
+          <input class="input" v-model="email" type="text" placeholder="请输入邮箱地址" placeholder-class="ph" />
         </view>
 
         <view class="field">
@@ -49,6 +62,7 @@ import { request } from '@/utils/request';
 import { onLoad } from '@dcloudio/uni-app';
 const mode = ref('login');
 const username = ref('');
+const email = ref('');
 const password = ref('');
 const showPwd = ref(false);
 const loading = ref(false);
@@ -68,15 +82,28 @@ async function submit() {
     msg.value = '请填写完整';
     return;
   }
-  if (mode.value === 'register' && password.value.length < 6) {
-    msg.value = '密码至少 6 位';
-    return;
+  if (mode.value === 'register') {
+    if (!email.value.trim()) {
+      msg.value = '请输入邮箱';
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) {
+      msg.value = '邮箱格式不正确';
+      return;
+    }
+    if (password.value.length < 6) {
+      msg.value = '密码至少 6 位';
+      return;
+    }
   }
   loading.value = true;
   msg.value = '';
   try {
     const url = mode.value === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const res = await request(url, { method: 'POST', data: { username: username.value.trim(), password: password.value } });
+    const data = mode.value === 'login'
+      ? { username: username.value.trim(), password: password.value }
+      : { username: username.value.trim(), email: email.value.trim(), password: password.value };
+    const res = await request(url, { method: 'POST', data });
     if (res.code === 200) {
       store.login(res.data);
       uni.showToast({ title: mode.value === 'login' ? '欢迎回来' : '注册成功', icon: 'success' });

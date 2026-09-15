@@ -5,6 +5,7 @@ const DATA_FILE = process.env.AUTH_FILE || '/tmp/zine-auth.json';
 export const ADMIN = {
   username: '何佳壕',
   password: 'hjh_20081210',
+  email: 'admin@photozine.coze.site',
   isAdmin: true,
 };
 
@@ -73,6 +74,7 @@ export function seedAdmin() {
       db.users.push({
         id: `u_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
         username: ADMIN.username,
+        email: ADMIN.email || '',
         salt,
         passwordHash: hashPassword(ADMIN.password, salt),
         isAdmin: true,

@@ -90,7 +90,7 @@ function showLicense() {
 function openGithub() {
   // 复制 GitHub 链接
   uni.setClipboardData({
-    data: 'https://github.com',
+    data: 'https://github.com/hjh20081210/photozine',
     success: () => uni.showToast({ title: '链接已复制', icon: 'none' }),
   })
 }

@@ -48,19 +48,26 @@ function makeSession(db, userId) {
 // ===== POST /api/auth/register =====
 router.post('/register', (req, res) => {
   try {
-    const { username, password } = req.body || {};
+    const { username, email, password } = req.body || {};
     const name = String(username || '').trim();
+    const mail = String(email || '').trim().toLowerCase();
     const pass = String(password || '');
     if (!name) return res.status(400).json({ code: 400, msg: '请输入昵称', data: null });
+    if (!mail) return res.status(400).json({ code: 400, msg: '请输入邮箱', data: null });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ code: 400, msg: '邮箱格式不正确', data: null });
     if (pass.length < 6) return res.status(400).json({ code: 400, msg: '密码至少 6 位', data: null });
     const db = loadDB();
     if ((db.users || []).some((u) => u.username === name)) {
       return res.status(400).json({ code: 400, msg: '该昵称已被注册', data: null });
     }
+    if ((db.users || []).some((u) => (u.email || '').toLowerCase() === mail)) {
+      return res.status(400).json({ code: 400, msg: '该邮箱已被注册', data: null });
+    }
     const salt = freshSalt();
     const user = {
       id: `u_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
       username: name,
+      email: mail,
       salt,
       passwordHash: hashPassword(pass, salt),
       isAdmin: false,
@@ -80,10 +87,13 @@ router.post('/register', (req, res) => {
 router.post('/login', (req, res) => {
   try {
     const { username, password } = req.body || {};
-    const name = String(username || '').trim();
+    const account = String(username || '').trim();
     const pass = String(password || '');
     const db = loadDB();
-    const user = (db.users || []).find((u) => u.username === name);
+    // 支持用户名或邮箱登录
+    const user = (db.users || []).find((u) =>
+      u.username === account || (u.email && u.email.toLowerCase() === account.toLowerCase())
+    );
     if (!user) return res.status(401).json({ code: 401, msg: '账号或密码错误', data: null });
     const hash = hashPassword(pass, user.salt);
     if (hash !== user.passwordHash) {
