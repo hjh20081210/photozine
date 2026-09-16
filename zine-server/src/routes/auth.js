@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
+import { sendVerifyCode, verifyCode } from './email.js';
 import {
   ADMIN,
   freshSalt,
@@ -45,17 +46,44 @@ function makeSession(db, userId) {
   return tok;
 }
 
+// ===== POST /api/auth/send-verify-code =====
+// 注册发送邮箱验证码
+router.post('/send-verify-code', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    const mail = String(email || '').trim();
+    if (!mail) return res.status(400).json({ code: 400, msg: '请输入邮箱', data: null });
+
+    const result = await sendVerifyCode(mail);
+    if (!result.success) {
+      return res.status(400).json({ code: 400, msg: result.msg, data: null });
+    }
+    res.json({ code: 200, msg: result.msg, data: { ok: true } });
+  } catch (e) {
+    res.status(500).json({ code: 500, msg: '发送失败', error: e.message, data: null });
+  }
+});
+
 // ===== POST /api/auth/register =====
 router.post('/register', (req, res) => {
   try {
-    const { username, email, password } = req.body || {};
+    const { username, email, password, verifyCode: vCode } = req.body || {};
     const name = String(username || '').trim();
     const mail = String(email || '').trim().toLowerCase();
     const pass = String(password || '');
+    const code = String(vCode || '').trim();
     if (!name) return res.status(400).json({ code: 400, msg: '请输入昵称', data: null });
     if (!mail) return res.status(400).json({ code: 400, msg: '请输入邮箱', data: null });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ code: 400, msg: '邮箱格式不正确', data: null });
+    if (!code) return res.status(400).json({ code: 400, msg: '请输入验证码', data: null });
     if (pass.length < 6) return res.status(400).json({ code: 400, msg: '密码至少 6 位', data: null });
+
+    // 验证邮箱验证码
+    const vResult = verifyCode(mail, code);
+    if (!vResult.valid) {
+      return res.status(400).json({ code: 400, msg: vResult.msg, data: null });
+    }
+
     const db = loadDB();
     if ((db.users || []).some((u) => u.username === name)) {
       return res.status(400).json({ code: 400, msg: '该昵称已被注册', data: null });

@@ -27,7 +27,18 @@
         <!-- 注册：邮箱 -->
         <view class="field" v-if="mode === 'register'">
           <text class="label">邮箱</text>
-          <input class="input" v-model="email" type="text" placeholder="请输入邮箱地址" placeholder-class="ph" />
+          <input class="input" v-model="email" type="text" placeholder="支持 QQ / 163 邮箱" placeholder-class="ph" />
+        </view>
+
+        <!-- 注册：验证码 -->
+        <view class="field code-field" v-if="mode === 'register'">
+          <text class="label">邮箱验证码</text>
+          <view class="code-row">
+            <input class="input code-input" v-model="verifyCode" type="number" maxlength="6" placeholder="请输入 6 位验证码" placeholder-class="ph" />
+            <view :class="['code-btn', { disabled: codeCountdown > 0 || codeSending }]" @tap="sendCode">
+              {{ codeSending ? '发送中' : codeCountdown > 0 ? codeCountdown + 's 后重发' : '获取验证码' }}
+            </view>
+          </view>
         </view>
 
         <view class="field">
@@ -63,10 +74,63 @@ import { onLoad } from '@dcloudio/uni-app';
 const mode = ref('login');
 const username = ref('');
 const email = ref('');
+const verifyCode = ref('');
 const password = ref('');
 const showPwd = ref(false);
 const loading = ref(false);
+const codeSending = ref(false);
+const codeCountdown = ref(0);
 const msg = ref('');
+
+let codeTimer = null;
+
+function startCodeCountdown() {
+  codeCountdown.value = 60;
+  if (codeTimer) clearInterval(codeTimer);
+  codeTimer = setInterval(() => {
+    codeCountdown.value -= 1;
+    if (codeCountdown.value <= 0) {
+      clearInterval(codeTimer);
+      codeTimer = null;
+    }
+  }, 1000);
+}
+
+async function sendCode() {
+  if (codeCountdown.value > 0 || codeSending.value) return;
+  const mail = email.value.trim();
+  if (!mail) {
+    msg.value = '请先输入邮箱';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+    msg.value = '邮箱格式不正确';
+    return;
+  }
+  const domain = mail.split('@')[1]?.toLowerCase();
+  if (domain !== 'qq.com' && domain !== '163.com' && domain !== '126.com') {
+    msg.value = '目前仅支持 QQ 邮箱和 163 邮箱注册';
+    return;
+  }
+  codeSending.value = true;
+  msg.value = '';
+  try {
+    const res = await request('/api/auth/send-verify-code', {
+      method: 'POST',
+      data: { email: mail },
+    });
+    if (res.code === 200) {
+      uni.showToast({ title: '验证码已发送', icon: 'success' });
+      startCodeCountdown();
+    } else {
+      msg.value = res.msg || '发送失败';
+    }
+  } catch (e) {
+    msg.value = (e && e.message) || '网络异常';
+  } finally {
+    codeSending.value = false;
+  }
+}
 
 onLoad((opt) => {
   if (opt && opt.mode === 'register') mode.value = 'register';
@@ -91,6 +155,14 @@ async function submit() {
       msg.value = '邮箱格式不正确';
       return;
     }
+    if (!verifyCode.value.trim()) {
+      msg.value = '请输入验证码';
+      return;
+    }
+    if (verifyCode.value.trim().length !== 6) {
+      msg.value = '请输入 6 位验证码';
+      return;
+    }
     if (password.value.length < 6) {
       msg.value = '密码至少 6 位';
       return;
@@ -102,7 +174,7 @@ async function submit() {
     const url = mode.value === 'login' ? '/api/auth/login' : '/api/auth/register';
     const data = mode.value === 'login'
       ? { username: username.value.trim(), password: password.value }
-      : { username: username.value.trim(), email: email.value.trim(), password: password.value };
+      : { username: username.value.trim(), email: email.value.trim(), password: password.value, verifyCode: verifyCode.value.trim() };
     const res = await request(url, { method: 'POST', data });
     if (res.code === 200) {
       store.login(res.data);
@@ -221,6 +293,23 @@ onLoad((opt) => {
 }
 .ph { color: #C2B3A0; }
 .pwd-toggle { position: absolute; right: 24rpx; bottom: 26rpx; font-size: 24rpx; color: #8A7B6A; }
+
+.code-field .code-row { display: flex; align-items: center; gap: 16rpx; }
+.code-field .code-input { flex: 1; }
+.code-btn {
+  flex-shrink: 0;
+  height: 72rpx;
+  padding: 0 24rpx;
+  line-height: 72rpx;
+  font-size: 26rpx;
+  color: #26364A;
+  background: #EDF2F7;
+  border-radius: 12rpx;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.code-btn.disabled { color: #B8B0A5; background: #F5F1EA; }
+
 .primary-btn {
   margin-top: 24rpx; background: #26364A; color: #FFF7EA; text-align: center;
   padding: 28rpx 0; border-radius: 12rpx; font-size: 30rpx; letter-spacing: 4rpx;
