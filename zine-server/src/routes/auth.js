@@ -58,7 +58,10 @@ router.post('/send-verify-code', async (req, res) => {
     if (!result.success) {
       return res.status(400).json({ code: 400, msg: result.msg, data: null });
     }
-    res.json({ code: 200, msg: result.msg, data: { ok: true } });
+    // dev 模式下把验证码返回，方便前端调试
+    const respData = { ok: true };
+    if (result.code) respData.code = result.code;
+    res.json({ code: 200, msg: result.msg, data: respData });
   } catch (e) {
     res.status(500).json({ code: 500, msg: '发送失败', error: e.message, data: null });
   }

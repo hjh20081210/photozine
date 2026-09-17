@@ -7,11 +7,32 @@ const CODE_FILE = process.env.EMAIL_CODE_FILE || '/tmp/zine-email-codes.json';
 const CODE_TTL_MS = 5 * 60 * 1000; // 5 分钟有效
 const MAX_ATTEMPTS = 5; // 每个验证码最多验证 5 次
 const SEND_COOLDOWN_MS = 60 * 1000; // 发送冷却 60 秒
-const DAILY_LIMIT_PER_EMAIL = 10; // 每个邮箱每天最多发 10 次
+const DAILY_LIMIT_PER_EMAIL = 20; // 每个邮箱每天最多发 20 次
 
-// 根据邮箱域名选择对应的 SMTP 服务商
-function getSmtpConfig(email) {
-  const domain = email.split('@')[1]?.toLowerCase() || '';
+// 邮件发送模式：
+// - 'dev'：开发模式，不真实发送，接口直接返回验证码（默认）
+// - 'smtp'：SMTP 模式（需配置 EMAIL_SMTP_* 环境变量）
+// - 'ses'：腾讯云 SES 模式（需配置 TENCENT_SES_* 环境变量）
+const EMAIL_MODE = process.env.EMAIL_MODE || 'dev';
+
+// 通用发件人配置（优先走环境变量）
+const EMAIL_FROM = process.env.EMAIL_FROM || '旅信 Zine <noreply@photozine.coze.site>';
+
+// ---------- SMTP 配置（从环境变量读取，支持自定义任意 SMTP） ----------
+function getSmtpConfig() {
+  const host = process.env.EMAIL_SMTP_HOST;
+  const port = Number(process.env.EMAIL_SMTP_PORT || 465);
+  const user = process.env.EMAIL_SMTP_USER;
+  const pass = process.env.EMAIL_SMTP_PASS;
+  const secure = process.env.EMAIL_SMTP_SECURE !== 'false';
+  if (!host || !user || !pass) return null;
+  return { host, port, secure, user, pass, from: EMAIL_FROM };
+}
+
+// ---------- QQ / 163 邮箱（保留为兼容配置，生产环境不推荐） ----------
+// 注意：云服务器 IP 会触发 QQ/163 异地登录风控（535 Login fail），
+// 线上部署推荐使用腾讯云 SES 等 HTTP API 邮件服务。
+function getBuiltinSmtp(domain) {
   if (domain === 'qq.com') {
     return {
       host: 'smtp.qq.com',
@@ -32,15 +53,7 @@ function getSmtpConfig(email) {
       from: '旅信 Zine <photozine@163.com>',
     };
   }
-  // 默认用 QQ 邮箱发
-  return {
-    host: 'smtp.qq.com',
-    port: 465,
-    secure: true,
-    user: 'hjh20081210@qq.com',
-    pass: 'vfwbmitmkrgueahi',
-    from: '旅信 Zine <hjh20081210@qq.com>',
-  };
+  return null;
 }
 
 function loadCodes() {
@@ -72,20 +85,62 @@ function getTodayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
+function buildEmailHtml(code) {
+  return `
+    <div style="max-width: 480px; margin: 0 auto; padding: 32px 28px; background: #FFFDF8; font-family: -apple-system, 'PingFang SC', sans-serif;">
+      <div style="font-size: 22px; font-weight: 600; color: #2C241E; margin-bottom: 8px;">注册验证码</div>
+      <div style="font-size: 14px; color: #8A7B6A; margin-bottom: 24px;">您正在注册旅信 Zine 账号，验证码 5 分钟内有效。</div>
+      <div style="background: #F7F1E5; border-radius: 12px; padding: 28px; text-align: center; margin-bottom: 24px;">
+        <div style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #26364A; font-family: 'Courier New', monospace;">${code}</div>
+      </div>
+      <div style="font-size: 12px; color: #B8B0A5;">如非本人操作，请忽略此邮件。</div>
+    </div>
+  `;
+}
+
+/**
+ * 真实发送邮件（内部方法）
+ */
+async function doSendMail(to, subject, html) {
+  // 优先使用环境变量配置的 SMTP
+  let smtp = getSmtpConfig();
+
+  // 其次根据收件人域名选内置 SMTP
+  if (!smtp) {
+    const domain = to.split('@')[1]?.toLowerCase() || '';
+    smtp = getBuiltinSmtp(domain);
+  }
+
+  if (!smtp) {
+    throw new Error('未配置邮件发送通道');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: { user: smtp.user, pass: smtp.pass },
+    connectionTimeout: 10000,
+  });
+
+  await transporter.sendMail({
+    from: smtp.from || EMAIL_FROM,
+    to,
+    subject,
+    html,
+  });
+}
+
 /**
  * 发送邮箱验证码
  * @param {string} email
- * @returns {Promise<{success: boolean, msg: string}>}
+ * @returns {Promise<{success: boolean, msg: string, code?: string}>}
+ *   dev 模式下 code 字段返回验证码，方便调试
  */
 export async function sendVerifyCode(email) {
   const mail = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
     return { success: false, msg: '邮箱格式不正确' };
-  }
-  // 只支持 QQ 和 163 邮箱注册
-  const domain = mail.split('@')[1];
-  if (domain !== 'qq.com' && domain !== '163.com' && domain !== '126.com') {
-    return { success: false, msg: '目前仅支持 QQ 邮箱和 163 邮箱注册' };
   }
 
   const data = loadCodes();
@@ -105,33 +160,15 @@ export async function sendVerifyCode(email) {
   }
 
   const code = genCode();
-  const smtp = getSmtpConfig(mail);
+  const html = buildEmailHtml(code);
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: smtp.secure,
-      auth: { user: smtp.user, pass: smtp.pass },
-    });
-
-    const html = `
-      <div style="max-width: 480px; margin: 0 auto; padding: 32px 28px; background: #FFFDF8; font-family: -apple-system, 'PingFang SC', sans-serif;">
-        <div style="font-size: 22px; font-weight: 600; color: #2C241E; margin-bottom: 8px;">注册验证码</div>
-        <div style="font-size: 14px; color: #8A7B6A; margin-bottom: 24px;">您正在注册旅信 Zine 账号，验证码 5 分钟内有效。</div>
-        <div style="background: #F7F1E5; border-radius: 12px; padding: 28px; text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #26364A; font-family: 'Courier New', monospace;">${code}</div>
-        </div>
-        <div style="font-size: 12px; color: #B8B0A5;">如非本人操作，请忽略此邮件。</div>
-      </div>
-    `;
-
-    await transporter.sendMail({
-      from: smtp.from,
-      to: mail,
-      subject: '【旅信 Zine】您的注册验证码',
-      html,
-    });
+    if (EMAIL_MODE === 'dev') {
+      // 开发模式：不真实发送，直接返回验证码
+      console.info(`[email] dev 模式，验证码已生成：${mail} -> ${code}`);
+    } else {
+      await doSendMail(mail, '【旅信 Zine】您的注册验证码', html);
+    }
 
     // 保存验证码
     data[mail] = {
@@ -144,7 +181,10 @@ export async function sendVerifyCode(email) {
     };
     saveCodes(data);
 
-    return { success: true, msg: '验证码已发送' };
+    const result = { success: true, msg: EMAIL_MODE === 'dev' ? '验证码已发送（开发模式）' : '验证码已发送' };
+    // 开发模式下把验证码也返回，方便前端调试
+    if (EMAIL_MODE === 'dev') result.code = code;
+    return result;
   } catch (e) {
     console.error('[email] 发送失败', e.message);
     return { success: false, msg: '验证码发送失败，请稍后重试' };
@@ -185,4 +225,9 @@ export function verifyCode(email, code) {
   delete data[mail];
   saveCodes(data);
   return { valid: true, msg: '验证成功' };
+}
+
+// 当前模式（供接口调试使用）
+export function getEmailMode() {
+  return EMAIL_MODE;
 }
