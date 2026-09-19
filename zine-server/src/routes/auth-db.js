@@ -64,6 +64,22 @@ export function findByToken(db, tok) {
   return (db.users || []).find((u) => u.id === s.userId) || null;
 }
 
+export function findUserByDeviceId(db, deviceId) {
+  if (!deviceId) return null;
+  return (db.users || []).find((u) => u.deviceId === deviceId) || null;
+}
+
+export function findUserByEmail(db, email) {
+  if (!email) return null;
+  return (db.users || []).find((u) => (u.email || '').toLowerCase() === email.toLowerCase()) || null;
+}
+
+export function deleteUser(db, userId) {
+  db.users = (db.users || []).filter((u) => u.id !== userId);
+  db.sessions = (db.sessions || []).filter((s) => s.userId !== userId);
+  saveDB(db);
+}
+
 // 首次启动 seed 管理员
 export function seedAdmin() {
   try {

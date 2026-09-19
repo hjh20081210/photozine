@@ -4,14 +4,18 @@ import path from 'path';
 import { loadDB, findByToken } from './auth-db.js';
 
 // 默认免费模型（密钥存后端，不对外暴露完整密钥到非管理员）
-// kind: 'image' → endpoint 存 base，generation.js 拼 /v1/images/* 端点
-// kind: 'chat'  → endpoint 存完整 URL，图生图用多模态 messages
+// 接入方式 / 接口格式：
+//   'image'     → OpenAI Images Generations 格式（文生图/图生图，每次独立请求）
+//   'chat'      → OpenAI Chat Completions 格式（messages + role，多模态生图）
+//   'responses' → OpenAI Responses API 格式（input + tools，服务端维护会话）
+//   'sdk'       → Coze / 豆包 SDK 接入（内部 ImageGenerationClient）
 const DEFAULT_FREE_MODELS = {
   'gpt-image-2': {
     name: 'gpt-image-2',
     model: 'gpt-image-2',
     endpoint: 'https://www.aiyoyoo.com',
     apiKey: 'sk-52678f321d8e14eb1a056465f6841c297e08361ef63a552270ad77f903dcdd37',
+    apiFormat: 'image',
     kind: 'image',
   },
   'rumeng-pro': {
@@ -19,6 +23,7 @@ const DEFAULT_FREE_MODELS = {
     model: '入梦 Pro',
     endpoint: 'https://speed.toter.me/chat/completions',
     apiKey: 'sk-GjeCPWiTENHjn18RA51Uax6xjgQgbUfD4ixgXRom6p1dVcKI',
+    apiFormat: 'chat',
     kind: 'chat',
   },
   'seedream-4-5': {
@@ -26,6 +31,7 @@ const DEFAULT_FREE_MODELS = {
     model: 'doubao-seedream-4-5-251128',
     endpoint: 'https://api.coze.cn',
     apiKey: '',
+    apiFormat: 'sdk',
     kind: 'sdk',
   },
 };
@@ -33,13 +39,19 @@ const DEFAULT_FREE_MODELS = {
 const FILE = '/tmp/free-models.json';
 let cache = null;
 
+const VALID_FORMATS = ['image', 'chat', 'responses', 'sdk'];
+
 function normalize(entry) {
+  // 兼容旧字段 kind：apiFormat 优先，kind 作为兜底别名
+  let apiFormat = entry.apiFormat || entry.kind || 'image';
+  if (!VALID_FORMATS.includes(apiFormat)) apiFormat = 'image';
   return {
     name: String(entry.name || entry.model || '模型'),
     model: String(entry.model || entry.name || ''),
     endpoint: String(entry.endpoint || entry.baseUrl || ''),
     apiKey: String(entry.apiKey || ''),
-    kind: String(entry.kind || 'image'),
+    apiFormat,
+    kind: apiFormat, // 向后兼容
   };
 }
 
@@ -79,6 +91,7 @@ export function getFreeModelList() {
     name: m.name,
     model: m.model,
     endpoint: m.endpoint,
+    apiFormat: m.apiFormat,
     kind: m.kind,
     apiKey: m.apiKey ? `${m.apiKey.slice(0, 6)}...${m.apiKey.slice(-4)}` : '',
     hasKey: !!m.apiKey,
@@ -113,15 +126,19 @@ router.post('/', (req, res) => {
   try {
     const g = requireAdmin(req, res);
     if (g.error) return;
-    const { id, name, model, endpoint, apiKey, kind } = req.body || {};
+    const { id, name, model, endpoint, apiKey, apiFormat, kind } = req.body || {};
     if (!id || !model || !endpoint || !apiKey) {
       return res.status(400).json({ code: 400, msg: '缺少 id / model / endpoint / apiKey', data: null });
+    }
+    const fmt = apiFormat || kind;
+    if (fmt && !VALID_FORMATS.includes(fmt)) {
+      return res.status(400).json({ code: 400, msg: '接口格式不支持，可选：image / chat / responses / sdk', data: null });
     }
     const models = loadFreeModels();
     if (models[id]) {
       return res.status(400).json({ code: 400, msg: '该 id 已存在', data: null });
     }
-    models[id] = normalize({ id, name, model, endpoint, apiKey, kind });
+    models[id] = normalize({ id, name, model, endpoint, apiKey, apiFormat: fmt });
     saveFreeModels(models);
     res.json({ code: 200, msg: '已添加', data: { id } });
   } catch (e) {
@@ -137,7 +154,11 @@ router.put('/:id', (req, res) => {
     const id = req.params.id;
     const models = loadFreeModels();
     if (!models[id]) return res.status(404).json({ code: 404, msg: '模型不存在', data: null });
-    const { name, model, endpoint, apiKey, kind } = req.body || {};
+    const { name, model, endpoint, apiKey, apiFormat, kind } = req.body || {};
+    const fmt = apiFormat || kind;
+    if (fmt && !VALID_FORMATS.includes(fmt)) {
+      return res.status(400).json({ code: 400, msg: '接口格式不支持', data: null });
+    }
     const cur = models[id];
     models[id] = normalize({
       id,
@@ -145,7 +166,7 @@ router.put('/:id', (req, res) => {
       model: model ?? cur.model,
       endpoint: endpoint ?? cur.endpoint,
       apiKey: apiKey ?? cur.apiKey,
-      kind: kind ?? cur.kind,
+      apiFormat: fmt ?? cur.apiFormat,
     });
     saveFreeModels(models);
     res.json({ code: 200, msg: '已更新', data: { id } });

@@ -55,6 +55,16 @@
 			}
 		},
 		{
+			"path": "pages/settings/bind-email",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "绑定邮箱",
+				"navigationBarBackgroundColor": "#F4EFE8",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4EFE8"
+			}
+		},
+		{
 			"path": "pages/history/history",
 			"style": {
 				"navigationBarTitleText": "历史记录",

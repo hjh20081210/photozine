@@ -10,6 +10,9 @@ import {
   saveDB,
   publicUser,
   findByToken,
+  findUserByDeviceId,
+  findUserByEmail,
+  deleteUser,
   seedAdmin,
 } from './auth-db.js';
 
@@ -70,16 +73,31 @@ router.post('/send-verify-code', async (req, res) => {
 // ===== POST /api/auth/register =====
 router.post('/register', (req, res) => {
   try {
-    const { username, email, password, verifyCode: vCode } = req.body || {};
+    const { username, email, password, verifyCode: vCode, deviceId } = req.body || {};
     const name = String(username || '').trim();
     const mail = String(email || '').trim().toLowerCase();
     const pass = String(password || '');
     const code = String(vCode || '').trim();
+    const devId = String(deviceId || '').trim();
     if (!name) return res.status(400).json({ code: 400, msg: '请输入昵称', data: null });
     if (!mail) return res.status(400).json({ code: 400, msg: '请输入邮箱', data: null });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ code: 400, msg: '邮箱格式不正确', data: null });
     if (!code) return res.status(400).json({ code: 400, msg: '请输入验证码', data: null });
     if (pass.length < 6) return res.status(400).json({ code: 400, msg: '密码至少 6 位', data: null });
+
+    const db = loadDB();
+
+    // 单账号限制：同一设备已有账号时返回 409
+    if (devId) {
+      const existing = findUserByDeviceId(db, devId);
+      if (existing) {
+        return res.status(409).json({
+          code: 409,
+          msg: '该设备已注册账号，仅支持单设备单账号',
+          data: { username: existing.username, email: existing.email || '' },
+        });
+      }
+    }
 
     // 验证邮箱验证码
     const vResult = verifyCode(mail, code);
@@ -87,7 +105,6 @@ router.post('/register', (req, res) => {
       return res.status(400).json({ code: 400, msg: vResult.msg, data: null });
     }
 
-    const db = loadDB();
     if ((db.users || []).some((u) => u.username === name)) {
       return res.status(400).json({ code: 400, msg: '该昵称已被注册', data: null });
     }
@@ -105,6 +122,7 @@ router.post('/register', (req, res) => {
       createdAt: new Date().toISOString(),
       points: 1000,
       lastCheckInAt: null,
+      deviceId: devId || null,
     };
     db.users.push(user);
     const tok = makeSession(db, user.id);
@@ -333,6 +351,81 @@ router.post('/change-password', (req, res) => {
     res.json({ code: 200, msg: '密码修改成功', data: null });
   } catch (e) {
     res.status(500).json({ code: 500, msg: '修改失败', error: e.message, data: null });
+  }
+});
+
+// ===== POST /api/auth/delete-account —— 注销账号（登录态或设备+密码）=====
+router.post('/delete-account', (req, res) => {
+  try {
+    const tok = (req.headers['x-session'] || '').toString();
+    const db = loadDB();
+    let user = null;
+
+    if (tok) {
+      user = findByToken(db, tok);
+    }
+
+    // 也支持通过用户名+密码注销（弹窗场景）
+    if (!user) {
+      const { username, password } = req.body || {};
+      const account = String(username || '').trim();
+      const pass = String(password || '');
+      user = (db.users || []).find((u) =>
+        u.username === account || (u.email && u.email.toLowerCase() === account.toLowerCase())
+      );
+      if (user && pass) {
+        const hash = hashPassword(pass, user.salt);
+        if (hash !== user.passwordHash) {
+          return res.status(401).json({ code: 401, msg: '密码错误', data: null });
+        }
+      } else {
+        user = null;
+      }
+    }
+
+    if (!user) return res.status(401).json({ code: 401, msg: '验证失败', data: null });
+    if (user.isAdmin) return res.status(400).json({ code: 400, msg: '管理员账号不可注销', data: null });
+
+    deleteUser(db, user.id);
+    res.json({ code: 200, msg: '账号已注销', data: null });
+  } catch (e) {
+    res.status(500).json({ code: 500, msg: '注销失败', error: e.message, data: null });
+  }
+});
+
+// ===== POST /api/auth/bind-email —— 绑定邮箱 =====
+router.post('/bind-email', async (req, res) => {
+  try {
+    const tok = (req.headers['x-session'] || '').toString();
+    if (!tok) return res.status(401).json({ code: 401, msg: '未登录', data: null });
+    const db = loadDB();
+    const user = findByToken(db, tok);
+    if (!user) return res.status(401).json({ code: 401, msg: '登录已过期', data: null });
+
+    const { email, verifyCode: vCode } = req.body || {};
+    const mail = String(email || '').trim().toLowerCase();
+    const code = String(vCode || '').trim();
+
+    if (!mail) return res.status(400).json({ code: 400, msg: '请输入邮箱', data: null });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ code: 400, msg: '邮箱格式不正确', data: null });
+    if (!code) return res.status(400).json({ code: 400, msg: '请输入验证码', data: null });
+
+    // 邮箱已被其他账号绑定
+    const existing = findUserByEmail(db, mail);
+    if (existing && existing.id !== user.id) {
+      return res.status(400).json({ code: 400, msg: '该邮箱已被绑定', data: null });
+    }
+
+    const vResult = verifyCode(mail, code);
+    if (!vResult.valid) {
+      return res.status(400).json({ code: 400, msg: vResult.msg, data: null });
+    }
+
+    user.email = mail;
+    saveDB(db);
+    res.json({ code: 200, msg: '邮箱绑定成功', data: { email: user.email } });
+  } catch (e) {
+    res.status(500).json({ code: 500, msg: '绑定失败', error: e.message, data: null });
   }
 });
 

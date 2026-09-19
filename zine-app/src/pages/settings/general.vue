@@ -15,6 +15,12 @@
       <!-- 账号信息 -->
       <view class="section-title">账号</view>
       <view class="panel">
+        <view class="setting-item" @click="goBindEmail">
+          <text class="si-txt">绑定邮箱</text>
+          <text class="si-value">{{ user?.email || '未绑定' }}</text>
+          <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+        </view>
+        <view class="divider-h" />
         <view class="setting-item" @click="goChangePassword">
           <text class="si-txt">修改密码</text>
           <svg class="arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9A8877" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
@@ -77,6 +83,10 @@ function goAccount() {
 
 function goChangePassword() {
   uni.navigateTo({ url: '/pages/settings/password' })
+}
+
+function goBindEmail() {
+  uni.navigateTo({ url: '/pages/settings/bind-email' })
 }
 
 function goFeedback() {
@@ -208,6 +218,12 @@ function onLogout() {
   font-size: 28rpx;
   color: var(--ink);
   font-weight: 600;
+  flex: 1;
+}
+.si-value {
+  font-size: 24rpx;
+  color: var(--ink-3);
+  margin-right: 8rpx;
 }
 .si-sub {
   font-size: 22rpx;

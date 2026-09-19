@@ -530,6 +530,15 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
       ? [{ type: 'text', text: svgPrompt }, { type: 'image_url', image_url: { url: inputData } }]
       : [{ type: 'text', text: svgPrompt }];
     body = { model, messages: [{ role: 'user', content }], stream: false, max_tokens: 12000 };
+  } else if (kind === 'responses') {
+    // Responses API 格式：input + tools
+    const base = extractBase(endpoint) || '';
+    url = `${base}/v1/responses`;
+    const svgPrompt = `${prompt}。要求：直接返回完整的SVG代码（以<svg>开头），不要返回HTML、CSS、markdown代码块或其他格式。SVG宽度800，高度1067（竖版3:4比例，与明信片画布比例一致）。`;
+    const content = inputData
+      ? [{ type: 'input_text', text: svgPrompt }, { type: 'input_image', image_url: inputData }]
+      : [{ type: 'input_text', text: svgPrompt }];
+    body = { model, input: content, stream: false, max_output_tokens: 12000 };
   } else {
     // image 类模型：用 base 拼标准图像端点
     const base = extractBase(endpoint) || (freeModel.baseUrl || '').replace(/\/$/, '');
@@ -597,6 +606,32 @@ async function generateViaOpenAI(freeModel, prompt, size, imageUrl) {
     }
     return Buffer.from(img.value, 'base64');
   }
+
+  // 针对 responses API 格式，从 output 列表中提取图片或 SVG
+  if (kind === 'responses') {
+    const img = extractImageFromResponses(json);
+    if (!img) {
+      const outText = (json?.output || []).map((o) => o.content || '').join('\n').slice(0, 500);
+      console.error('[Generation] Responses 返回内容片段:', outText);
+      throw new Error('模型接口未返回图片数据');
+    }
+    if (img.type === 'url') {
+      const b = await fetchBase64(img.value);
+      return Buffer.from(b);
+    }
+    if (img.type === 'svg') {
+      try {
+        const png = await sharp(Buffer.from(img.value, 'utf8')).png().toBuffer();
+        return png;
+      } catch (svgErr) {
+        console.error(`[Generation] SVG rendering failed: ${svgErr.message}`);
+        const placeholderSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1067" viewBox="0 0 800 1067"><rect width="800" height="1067" fill="#f5f0e8"/><text x="400" y="533" text-anchor="middle" fill="#8b7355" font-size="24" font-family="sans-serif">AI 生成失败，请重试</text></svg>`;
+        const png = await sharp(Buffer.from(placeholderSvg, 'utf8')).png().toBuffer();
+        return png;
+      }
+    }
+    return Buffer.from(img.value, 'base64');
+  }
   // image 类模型：从 data[0].b64_json 或 data[0].url 提取
   const data = json?.data;
   if (Array.isArray(data) && data.length) {
@@ -656,6 +691,51 @@ async function fetchBase64(url) {
   if (!res.ok) throw new Error('图片下载失败');
   const ab = await res.arrayBuffer();
   return Buffer.from(ab).toString('base64');
+}
+
+// 从 Responses API 响应中抽取图片，返回 { type: 'b64' | 'url' | 'svg', value }
+function extractImageFromResponses(json) {
+  const output = json?.output;
+  if (!Array.isArray(output)) return null;
+  for (const item of output) {
+    // 类型 1：output_image / image_file
+    if (item?.type === 'output_image' && item?.image_url) {
+      const u = String(item.image_url);
+      const m = u.match(/^data:image\/[a-z+]+\;base64,(.*)$/i);
+      if (m) return { type: 'b64', value: m[1] };
+      if (/^https?:\/\//.test(u)) return { type: 'url', value: u };
+    }
+    if (item?.image_url?.url) {
+      const u = String(item.image_url.url);
+      const m = u.match(/^data:image\/[a-z+]+\;base64,(.*)$/i);
+      if (m) return { type: 'b64', value: m[1] };
+      if (/^https?:\/\//.test(u)) return { type: 'url', value: u };
+    }
+    // 类型 2：file_search / image 工具返回的图片
+    if (item?.type === 'file_search_result' && item?.file?.image_url) {
+      return { type: 'url', value: String(item.file.image_url) };
+    }
+    // 类型 3：文本消息中包含 base64 / SVG / markdown 图片
+    if (typeof item?.content === 'string') {
+      const txt = item.content;
+      const m1 = txt.match(/base64,([A-Za-z0-9+/=]+)/);
+      if (m1) return { type: 'b64', value: m1[1] };
+      const m2 = txt.match(/```(?:svg)?\s*\n?([\s\S]*?)```/) || txt.match(/<svg[\s\S]*?<\/svg>/i);
+      if (m2) return { type: 'svg', value: m2[1] || m2[0] };
+    }
+    // 类型 4：content 数组（消息分片）
+    if (Array.isArray(item?.content)) {
+      for (const part of item.content) {
+        if (part?.image_url?.url) {
+          const u = String(part.image_url.url);
+          const m = u.match(/^data:image\/[a-z+]+\;base64,(.*)$/i);
+          if (m) return { type: 'b64', value: m[1] };
+          if (/^https?:\/\//.test(u)) return { type: 'url', value: u };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 // 同步生成接口
@@ -823,9 +903,30 @@ router.post('/', async (req, res) => {
   try {
     const body = req.body || {};
     const modelKey = body.provider?.modelKey || body.provider?.model || body.model || 'gpt-image-2';
-    // 命中内置免费模型（OpenAI 兼容 chat/completions），走 generateViaOpenAI；否则走 coze SDK
+    // 命中内置免费模型（管理员配置），走对应格式；否则走 coze SDK
     let freeModel = getFreeModelMap()[modelKey] || null;
     const model = freeModel ? freeModel.model : (MODEL_MAP[modelKey] || DEFAULT_MODEL);
+
+    // 支持用户在请求中传入自定义模型配置（前端本地模型配置透传）
+    // 结构：{ apiFormat, baseUrl, apiKey, modelName, customPath }
+    // 自定义模型不计积分消耗（走用户自己的 API Key）
+    let customModel = null;
+    const custom = body.customModel || body.userModel || body.provider?.custom;
+    if (custom && custom.apiKey && custom.baseUrl) {
+      const fmt = custom.apiFormat || custom.kind || 'image';
+      customModel = {
+        model: custom.model || custom.modelName || model,
+        apiKey: custom.apiKey,
+        endpoint: custom.baseUrl,
+        customPath: custom.customPath || '',
+        apiFormat: fmt,
+        kind: fmt,
+        isCustom: true,
+      };
+    }
+    // 实际用于生成的模型配置：自定义模型优先，否则免费模型
+    const activeModel = customModel || freeModel;
+    const activeKind = activeModel?.apiFormat || activeModel?.kind || 'sdk';
 
     // ---- 积分检查与扣减 ----
     const pointsCost = getModelPointsCost(modelKey);
@@ -848,6 +949,8 @@ router.post('/', async (req, res) => {
     const client = new ImageGenerationClient(config, customHeaders);
     body._model = model;
     body._freeModel = freeModel;
+    body._activeModel = activeModel;
+    body._activeKind = activeKind;
     // 用户显式填了标题才保留（AI 拟题仅基于主题/风格，绝不混入日期地点；未填则标题留空）
     body.title = body.title && String(body.title).trim() ? String(body.title).trim() : '';
 
@@ -868,21 +971,19 @@ router.post('/', async (req, res) => {
     body._palette = palette;
     console.log('[Generation] palette:', palette);
 
-    // ---- 1) 正面：根据 freeModel.kind 选择生成方式 ----
-    // kind: 'sdk' → Seedream SDK（忠实原图构图 + 艺术风格）
-    // kind: 'chat' → 入梦 Pro 等多模态 chat 模型
-    // kind: 'image' → gpt-image-2 等 OpenAI 兼容图像模型
+    // ---- 1) 正面：根据 activeKind 选择生成方式 ----
+    // kind: 'sdk'       → Seedream SDK（忠实原图构图 + 艺术风格）
+    // kind: 'image'     → OpenAI Images Generations（文生图/图生图）
+    // kind: 'chat'      → OpenAI Chat Completions（多模态 chat 模型）
+    // kind: 'responses' → OpenAI Responses API（input + tools）
     const [frontArtBuf, extractedBackLine] = await Promise.all([
       (async () => {
-        if (freeModel && freeModel.kind === 'sdk') {
+        if (activeKind === 'sdk') {
           // Seedream SDK
           return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
-        } else if (freeModel && freeModel.kind === 'chat') {
-          // 入梦 Pro 等多模态 chat 模型
-          return generateViaOpenAI(freeModel, buildFrontArtPrompt(body), [canvasW - Math.round(canvasW * 0.35), canvasH], body.imageUrl);
-        } else if (freeModel && freeModel.kind === 'image') {
-          // gpt-image-2 等 OpenAI 兼容图像模型
-          return generateViaOpenAI(freeModel, buildFrontArtPrompt(body), [canvasW - Math.round(canvasW * 0.35), canvasH], body.imageUrl);
+        } else if (activeKind === 'chat' || activeKind === 'image' || activeKind === 'responses') {
+          // 通用 OpenAI 兼容模型（chat / image / responses）
+          return generateViaOpenAI(activeModel, buildFrontArtPrompt(body), [canvasW - Math.round(canvasW * 0.35), canvasH], body.imageUrl);
         } else {
           // 默认用 Seedream SDK
           return modelGenerate(body, client, buildFrontArtPrompt(body), `${canvasW - Math.round(canvasW * 0.35)}x${canvasH}`);
@@ -905,10 +1006,10 @@ router.post('/', async (req, res) => {
     // ---- 2) 背面（仅双面）：优先用原图线稿，否则 AI 生成 ----
     let backLineBuf = extractedBackLine;
     if (isDouble && !backLineBuf) {
-      if (freeModel && freeModel.kind === 'sdk') {
+      if (activeKind === 'sdk') {
         backLineBuf = await modelGenerate(body, client, buildBackLinePrompt(body), `${Math.round(canvasW * 0.6)}x${canvasH}`);
-      } else if (freeModel && (freeModel.kind === 'chat' || freeModel.kind === 'image')) {
-        backLineBuf = await generateViaOpenAI(freeModel, buildBackLinePrompt(body), [Math.round(canvasW * 0.6), canvasH], body.imageUrl);
+      } else if (activeKind === 'chat' || activeKind === 'image' || activeKind === 'responses') {
+        backLineBuf = await generateViaOpenAI(activeModel, buildBackLinePrompt(body), [Math.round(canvasW * 0.6), canvasH], body.imageUrl);
       } else {
         backLineBuf = await modelGenerate(body, client, buildBackLinePrompt(body), `${Math.round(canvasW * 0.6)}x${canvasH}`);
       }

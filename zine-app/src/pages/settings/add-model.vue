@@ -190,9 +190,9 @@ const PROVIDER_NAME_MAP = {
 }
 
 const apiFormats = [
-  { label: 'OpenAI Chat', value: 'chat' },
-  { label: 'OpenAI Responses', value: 'responses' },
-  { label: 'Anthropic', value: 'anthropic' },
+  { label: 'Images Generations', value: 'image', desc: '文生图/图生图，每次独立请求' },
+  { label: 'Chat Completions', value: 'chat', desc: 'messages + role，多模态生图' },
+  { label: 'Responses API', value: 'responses', desc: 'input + tools，服务端维护会话' },
 ]
 
 const imageInputOptions = [
@@ -204,7 +204,7 @@ const imageInputOptions = [
 
 const form = reactive({
   id: '',
-  apiFormat: 'chat',
+  apiFormat: 'image',
   provider: 'openai',
   baseUrl: '',
   apiKey: '',
